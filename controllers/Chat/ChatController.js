@@ -418,7 +418,13 @@ const sendMessage = async (req, res) => {
         let chatRoom = await ChatRoomModel.findOne({ roomId });
 
         // Determine the display text for lastMessage
-        const displayText = text?.trim() || (messageType === 'image' ? '📷 Image' : '📎 File');
+        let displayText = text?.trim();
+        if (!displayText) {
+            if (messageType === 'image') displayText = '📷 Image';
+            else if (messageType === 'audio') displayText = '🎤 Voice message';
+            else if (messageType === 'file') displayText = '📎 File';
+            else displayText = '';
+        }
 
         if (!chatRoom) {
             // Extract participant IDs from roomId (format: userId1_userId2)
