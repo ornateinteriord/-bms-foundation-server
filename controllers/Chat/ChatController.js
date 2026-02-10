@@ -346,22 +346,21 @@ const searchMember = async (req, res) => {
     }
 };
 
-// Send a message via REST API (text only - image/file support commented out)
+// Send a message via REST API (supports text, image, and file messages)
 const sendMessage = async (req, res) => {
     try {
-        // Image/file fields commented out - only text messages supported
-        const { roomId, text /*, imageUrl, messageType, fileName, fileSize */ } = req.body;
+        const { roomId, text, imageUrl, messageType, fileName, fileSize } = req.body;
         let userId = req.user.Member_id || req.user.memberId || req.user.id;
         const userRole = req.user.role;
 
         console.log("sendMessage - req.user:", req.user);
         console.log("sendMessage - initial userId:", userId, "role:", userRole);
 
-        // Validate: must have text only (image/file support commented out)
-        if (!roomId || !text?.trim()) {
+        // Validate: must have text or image/file
+        if (!roomId || (!text?.trim() && !imageUrl)) {
             return res.status(400).json({
                 success: false,
-                message: "Room ID and message text are required",
+                message: "Room ID and message content are required",
             });
         }
 
@@ -418,8 +417,14 @@ const sendMessage = async (req, res) => {
         // Find the chat room
         let chatRoom = await ChatRoomModel.findOne({ roomId });
 
-        // Determine the display text for lastMessage (image/file display commented out)
-        const displayText = text?.trim() || ''; // Removed: || (messageType === 'image' ? '📷 Image' : '📎 File')
+        // Determine the display text for lastMessage
+        let displayText = text?.trim();
+        if (!displayText) {
+            if (messageType === 'image') displayText = '📷 Image';
+            else if (messageType === 'audio') displayText = '🎤 Voice message';
+            else if (messageType === 'file') displayText = '📎 File';
+            else displayText = '';
+        }
 
         if (!chatRoom) {
             // Extract participant IDs from roomId (format: userId1_userId2)
@@ -459,19 +464,18 @@ const sendMessage = async (req, res) => {
 
         await chatRoom.save();
 
-        // Create message - text only (image/file fields commented out)
+        // Create message
         const message = new MessageModel({
             roomId,
             senderId: senderId,
             senderName: senderName,
             senderRole: senderRole,
             recipientId: recipient || "",
-            messageType: "text", // Fixed to text only, was: messageType || "text"
+            messageType: messageType || "text",
             text: text?.trim() || "",
-            // Image/file fields commented out
-            // imageUrl: imageUrl || "",
-            // fileName: fileName || "",
-            // fileSize: fileSize || 0,
+            imageUrl: imageUrl || "",
+            fileName: fileName || "",
+            fileSize: fileSize || 0,
             isRead: false,
         });
 
