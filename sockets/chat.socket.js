@@ -29,13 +29,14 @@ module.exports = (io) => {
     });
 
     io.on("connection", (socket) => {
-        console.log(`🔌 User connected: ${socket.userId} | Socket ID: ${socket.id}`);
-
         // Store active user (support multiple cursors/tabs)
         if (!activeUsers.has(socket.userId)) {
             activeUsers.set(socket.userId, new Set());
         }
         activeUsers.get(socket.userId).add(socket.id);
+
+        console.log(`🔌 User connected: ${socket.userId} | Socket ID: ${socket.id}`);
+        console.log(`📈 Total Active Users: ${activeUsers.size} | Keys: ${[...activeUsers.keys()]}`);
 
         // ==================== JOIN ROOM ====================
         socket.on("joinRoom", async ({ roomId }) => {

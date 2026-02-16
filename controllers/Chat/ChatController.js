@@ -517,16 +517,18 @@ const sendMessage = async (req, res) => {
                 const recipientSockets = activeUsers.get(recipient);
 
                 if (recipientSockets && recipientSockets.size > 0) {
-                    recipientSockets.forEach(socketId => {
+                    recipientSockets.forEach((socketId) => {
                         io.to(socketId).emit("new_message_notification", {
-                            roomId,
-                            senderId: senderId,
-                            senderName: senderName,
+                            roomId: chatRoom.roomId,
+                            senderId,
+                            senderName: sender.Name, // Use sender.Name as senderName might be 'Support' for admin
                             text: text?.trim().substring(0, 50) + (text?.length > 50 ? "..." : "") || "Sent a file",
                             senderProfileImage: sender.profile_image,
                         });
-                        console.log(`🔔 Notification emitted to ${socketId}`);
+                        console.log(`🔔 Notification emitted to ${socketId} (Recipient: ${recipient})`);
                     });
+                } else {
+                    console.log(`🔕 Notification SKIPPED. Recipient ${recipient} is NOT in activeUsers. keys: ${[...activeUsers.keys()]}`);
                 }
             }
         }
