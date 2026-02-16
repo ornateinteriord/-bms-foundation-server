@@ -63,7 +63,11 @@ const io = new Server(server, {
 });
 
 // Initialize chat socket handlers
-initializeChatSocket(io);
+const activeUsers = initializeChatSocket(io);
+
+// Make io & activeUsers available in controllers via req.app.get()
+app.set("io", io);
+app.set("activeUsers", activeUsers);
 // ======================================================
 //        🛡️ CORS CONFIG (Supports Vite + ngrok)
 // ======================================================

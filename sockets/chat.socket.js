@@ -3,7 +3,7 @@ const MessageModel = require("../models/Message/Message");
 const ChatRoomModel = require("../models/ChatRoom/ChatRoom");
 const MemberModel = require("../models/Users/Member");
 
-// Store active socket connections: { userId: socketId }
+// Store active socket connections: { userId: Set(socketIds) }
 const activeUsers = new Map();
 
 module.exports = (io) => {
@@ -17,7 +17,7 @@ module.exports = (io) => {
             }
 
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            socket.userId = decoded.Member_id || decoded.id;
+            socket.userId = decoded.Member_id || decoded.memberId || decoded.id;
             socket.userRole = decoded.role || "USER";
 
             console.log(`✅ Socket authenticated: ${socket.userId} (${socket.userRole})`);
@@ -31,8 +31,11 @@ module.exports = (io) => {
     io.on("connection", (socket) => {
         console.log(`🔌 User connected: ${socket.userId} | Socket ID: ${socket.id}`);
 
-        // Store active user
-        activeUsers.set(socket.userId, socket.id);
+        // Store active user (support multiple cursors/tabs)
+        if (!activeUsers.has(socket.userId)) {
+            activeUsers.set(socket.userId, new Set());
+        }
+        activeUsers.get(socket.userId).add(socket.id);
 
         // ==================== JOIN ROOM ====================
         socket.on("joinRoom", async ({ roomId }) => {
@@ -132,6 +135,31 @@ module.exports = (io) => {
                     createdAt: message.createdAt,
                 });
 
+                // Notify recipient if they are active but NOT in this room (or just general notification)
+                // We need to find the recipient's socket ID from activeUsers
+                // Notify recipient if they are active but NOT in this room (or just general notification)
+                // We need to find the recipient's socket IDs from activeUsers
+                const recipientSockets = activeUsers.get(recipient);
+
+                // console.log(`🔍 Checking notification for recipient: ${recipient}`);
+                // console.log(`Active users map keys:`, [...activeUsers.keys()]);
+
+                if (recipientSockets && recipientSockets.size > 0) {
+                    console.log(`Recipient Socket IDs:`, [...recipientSockets]);
+                    recipientSockets.forEach(socketId => {
+                        io.to(socketId).emit("new_message_notification", {
+                            roomId,
+                            senderId: socket.userId,
+                            senderName: sender.Name,
+                            text: text.trim().substring(0, 50) + (text.length > 50 ? "..." : ""),
+                            senderProfileImage: sender.profile_image,
+                        });
+                        // console.log(`🔔 Notification emitted to ${socketId}`);
+                    });
+                } else {
+                    console.log(`🔕 Recipient ${recipient} not active or not found in map`);
+                }
+
                 console.log(`💬 Message sent in room ${roomId} by ${socket.userId}`);
             } catch (error) {
                 console.error("Error sending message:", error);
@@ -172,9 +200,15 @@ module.exports = (io) => {
         // ==================== DISCONNECT ====================
         socket.on("disconnect", () => {
             console.log(`🔌 User disconnected: ${socket.userId} | Socket ID: ${socket.id}`);
-            activeUsers.delete(socket.userId);
+            if (activeUsers.has(socket.userId)) {
+                activeUsers.get(socket.userId).delete(socket.id);
+                if (activeUsers.get(socket.userId).size === 0) {
+                    activeUsers.delete(socket.userId);
+                }
+            }
         });
     });
 
     console.log("🚀 Socket.IO chat server initialized");
+    return activeUsers;
 };

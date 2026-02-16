@@ -3,6 +3,13 @@ const ChatRoomModel = require("../../models/ChatRoom/ChatRoom");
 const MemberModel = require("../../models/Users/Member");
 const AdminModel = require("../../models/Admin/Admin");
 
+// We need access to the IO instance. 
+// Since this is a controller, we typically attach io to req via middleware or export a function that accepts io.
+// However, looking at the setup, index.js probably initializes io.
+// A common pattern is `req.app.get('io')` if set in express.
+
+const getIo = (req) => req.app.get("io");
+
 // Get all chat rooms for the logged-in user
 const getRooms = async (req, res) => {
     try {
@@ -456,10 +463,14 @@ const sendMessage = async (req, res) => {
         }
 
         // Increment unread count for recipient
+        // Use the senderId determined above (either req.user.memberId or ADMIN_1)
         const recipient = chatRoom.participants.find((p) => p !== senderId);
+
         if (recipient) {
             const currentCount = chatRoom.unreadCount.get(recipient) || 0;
             chatRoom.unreadCount.set(recipient, currentCount + 1);
+        } else {
+            console.warn("sendMessage - Could not find recipient in participants:", chatRoom.participants, "Sender:", senderId);
         }
 
         await chatRoom.save();
@@ -480,6 +491,45 @@ const sendMessage = async (req, res) => {
         });
 
         await message.save();
+
+        // Emit to all users in the room
+        const io = req.app.get("io");
+        const activeUsers = req.app.get("activeUsers"); // Assuming activeUsers is also set in app or global
+
+        if (io) {
+            io.to(roomId).emit("receiveMessage", {
+                _id: message._id,
+                roomId: message.roomId,
+                senderId: message.senderId,
+                senderName: message.senderName,
+                senderRole: message.senderRole,
+                messageType: message.messageType,
+                text: message.text,
+                imageUrl: message.imageUrl,
+                fileName: message.fileName,
+                fileSize: message.fileSize,
+                isRead: message.isRead,
+                createdAt: message.createdAt,
+            });
+
+            // Notification Logic
+            if (activeUsers) {
+                const recipientSockets = activeUsers.get(recipient);
+
+                if (recipientSockets && recipientSockets.size > 0) {
+                    recipientSockets.forEach(socketId => {
+                        io.to(socketId).emit("new_message_notification", {
+                            roomId,
+                            senderId: senderId,
+                            senderName: senderName,
+                            text: text?.trim().substring(0, 50) + (text?.length > 50 ? "..." : "") || "Sent a file",
+                            senderProfileImage: sender.profile_image,
+                        });
+                        console.log(`🔔 Notification emitted to ${socketId}`);
+                    });
+                }
+            }
+        }
 
         res.status(201).json({
             success: true,
