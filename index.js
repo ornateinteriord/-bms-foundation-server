@@ -48,6 +48,7 @@ const io = new Server(server, {
       const isNgrok = origin?.endsWith("ngrok-free.dev");
       const allowedOrigins = [
         process.env.FRONTEND_URL,
+        "https://bms-foundation-web-ui.vercel.app",
         "https://mscs-beige.vercel.app",
         "https://biccsl.vercel.app"
       ].filter(Boolean);
@@ -73,6 +74,7 @@ app.set("activeUsers", activeUsers);
 // ======================================================
 const allowedOrigins = [
   process.env.FRONTEND_URL,
+  "https://bms-foundation-web-ui.vercel.app",
   "https://mscs-beige.vercel.app",
   "https://biccsl.vercel.app"
 ].filter(Boolean);
