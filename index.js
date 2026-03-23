@@ -13,12 +13,12 @@ const UserRoutes = require("./routes/UserRoutes");
 const AdminRoutes = require("./routes/AdminRoute");
 const PaymentRoutes = require("./routes/PaymentRoutes");
 const KYCRoutes = require("./routes/KYCRoutes");
-const ChatRoutes = require("./routes/ChatRoutes");
+
 
 // 🔐 CASHFREE WEBHOOK CONTROLLER
 const { handleWebhook } = require("./controllers/Payments/CashfreeController");
 const connectDB = require("./models/db");
-const initializeChatSocket = require("./sockets/chat.socket");
+
 
 const app = express();
 const server = http.createServer(app);
@@ -63,12 +63,6 @@ const io = new Server(server, {
   }
 });
 
-// Initialize chat socket handlers
-const activeUsers = initializeChatSocket(io);
-
-// Make io & activeUsers available in controllers via req.app.get()
-app.set("io", io);
-app.set("activeUsers", activeUsers);
 // ======================================================
 //        🛡️ CORS CONFIG (Supports Vite + ngrok)
 // ======================================================
@@ -153,7 +147,7 @@ app.use("/user", UserRoutes);
 app.use("/admin", AdminRoutes);
 app.use("/payments", PaymentRoutes);
 app.use("/kyc", KYCRoutes);
-app.use("/chat", ChatRoutes);
+
 
 // ======================================================
 //        🏠 HOME
