@@ -94,19 +94,26 @@ const activateMemberPackage = async (req, res) => {
 
     const oldStatus = existingMember.status;
 
-    // Define available packages
-    const packages = {
-      RD_1200: { name: "RD", value: 1200 },
-      RD_600: { name: "RD", value: 600 },
-    };
+    // Old packages (commented out — no longer in use)
+    // const packages = {
+    //   RD_1200: { name: "RD", value: 1200 },
+    //   RD_600:  { name: "RD", value: 600 },
+    // };
 
-    // Validate selected package
-    const selectedPackage = packages[packageType];
+    // Dynamically accept any BMS Plan amount (e.g. BMS_1200, BMS_5000)
+    let selectedPackage = null;
+    if (packageType && packageType.startsWith("BMS_")) {
+      const amtStr = packageType.replace("BMS_", "");
+      const amt = Number(amtStr);
+      if (!isNaN(amt) && amt > 0) {
+        selectedPackage = { name: "BMS Plan", value: amt };
+      }
+    }
 
     if (!selectedPackage) {
       return res.status(400).json({
         success: false,
-        message: "Invalid package type selected. Valid options are RD_1200, RD_600."
+        message: `Invalid package type. Please select a valid BMS Plan.`
       });
     }
 

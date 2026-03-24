@@ -96,14 +96,24 @@ const triggerMLMCommissions = async (req, res) => {
     await updateSponsorReferrals(sponsor.Member_id, new_member_id);
     console.log("👥 Direct sponsor referrals updated");
 
-    // COMMISSIONS SKIPPED
+    // Calculate and process multi-level commissions (10 levels based on percentage)
+    const commissions = await calculateCommissions(new_member_id, sponsor.Member_id);
+    let commissionResults = [];
+    if (commissions.length > 0) {
+      commissionResults = await processCommissions(commissions);
+      console.log(`💰 Processed ${commissionResults.length} commissions for new member ${new_member_id}`);
+    } else {
+      console.log(`⚠️ No commissions generated for new member ${new_member_id}`);
+    }
 
     return res.status(200).json({
       success: true,
-      message: "Referral hierarchy updated successfully (Commissions Disabled)",
+      message: "Referral hierarchy and commissions updated successfully",
       data: {
         new_member: { id: new_member_id },
-        sponsor: { id: sponsor.Member_id }
+        sponsor: { id: sponsor.Member_id },
+        commissions_generated: commissions.length,
+        commissions_processed: commissionResults.filter(r => r.success).length
       }
     });
 

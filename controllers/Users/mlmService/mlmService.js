@@ -18,24 +18,17 @@ const TransactionModel = require("../../../models/Transaction/Transaction");
  * 
  * Total potential commission per referral: ₹300 (₹100 + ₹25×4 + ₹15×5 + ₹5×5)
  */
-const commissionRates = {
-  /*
-  1: 25,  // Direct referral commission
-  2: 25,   // 2nd level indirect commission
-  3: 25,   // 3rd level indirect commission
-  4: 25,   // 4th level indirect commission
-  5: 25,   // 5th level indirect commission
-  6: 15,   // 6th level indirect commission
-  7: 15,   // 7th level indirect commission
-  8: 15,   // 8th level indirect commission
-  9: 15,   // 9th level indirect commission
-  10: 15,  // 10th level indirect commission
-  11: 5,   // 11th level indirect commission
-  12: 5,   // 12th level indirect commission
-  13: 5,   // 13th level indirect commission
-  14: 5,   // 14th level indirect commission
-  15: 5    // 15th level indirect commission
-  */
+const commissionPercentages = {
+  1: 5,     // 5%
+  2: 2,     // 2%
+  3: 0.5,   // 0.5%
+  4: 0.5,   // 0.5%
+  5: 0.5,   // 0.5%
+  6: 0.25,  // 0.25%
+  7: 0.25,  // 0.25%
+  8: 0.25,  // 0.25%
+  9: 0.25,  // 0.25%
+  10: 0.25  // 0.25%
 };
 
 const getOrdinal = (number) => {
@@ -110,14 +103,24 @@ const findUplineSponsors = async (memberId, maxLevels = 15) => {
  * @returns {Array} Array of commission objects for eligible sponsors
  */
 const calculateCommissions = async (newMemberId, directSponsorId) => {
-  return []; // COMMISSIONS DISABLED
-  /*
   try {
-    // Find all upline sponsors up to 15 levels
-    const uplineSponsors = await findUplineSponsors(newMemberId, 15);
+    // Find the new member to get their package_value
+    const newMember = await MemberModel.findOne({ Member_id: newMemberId });
+    if (!newMember) {
+      console.error(`❌ New member ${newMemberId} not found for commission calculation`);
+      return [];
+    }
+
+    const packageValue = Number(newMember.package_value || newMember.spackage || 0);
+    if (!packageValue || packageValue <= 0) {
+      console.log(`⚠️ New member ${newMemberId} has invalid package amount: ${packageValue}`);
+      return [];
+    }
+
+    // Find all upline sponsors up to 10 levels
+    const uplineSponsors = await findUplineSponsors(newMemberId, 10);
 
     if (uplineSponsors.length === 0) {
-      // console.log(`⚠️ No upline sponsors found for member ${newMemberId}`);
       return [];
     }
 
@@ -127,41 +130,40 @@ const calculateCommissions = async (newMemberId, directSponsorId) => {
     for (const upline of uplineSponsors) {
       // Only active sponsors are eligible for commissions
       if (upline.sponsor_status !== 'active') {
-        // console.log(`⚠️ Skipping Level ${upline.level} commission - Sponsor ${upline.sponsor_id} (${upline.sponsor_name}) is not active (${upline.sponsor_status})`);
         continue;
       }
 
-      // Get commission amount based on level
-      const commissionAmount = commissionRates[upline.level] || 0;
+      // Get percentage based on level
+      const percentage = commissionPercentages[upline.level] || 0;
+      
+      if (percentage > 0) {
+        const commissionAmount = Number(((packageValue * percentage) / 100).toFixed(2));
 
-      if (commissionAmount > 0) {
-        commissions.push({
-          level: upline.level,
-          sponsor_id: upline.sponsor_id,
-          Sponsor_code: upline.Sponsor_code,
-          sponsor_name: upline.sponsor_name,
-          sponsored_member_id: upline.sponsored_member_id,
-          new_member_id: newMemberId,
-          amount: commissionAmount,
-          payout_type: `${getOrdinal(upline.level)} Level Benefits`,
-          description: `Level ${upline.level} commission from new member ${newMemberId}`,
-          sponsor_status: upline.sponsor_status
-        });
+        if (commissionAmount > 0) {
+          commissions.push({
+            level: upline.level,
+            sponsor_id: upline.sponsor_id,
+            Sponsor_code: upline.Sponsor_code,
+            sponsor_name: upline.sponsor_name,
+            sponsored_member_id: upline.sponsored_member_id,
+            new_member_id: newMemberId,
+            amount: commissionAmount,
+            payout_type: `${getOrdinal(upline.level)} Level Benefits`,
+            description: `Level ${upline.level} commission (${percentage}%) from new member ${newMemberId}'s package (₹${packageValue})`,
+            sponsor_status: upline.sponsor_status
+          });
 
-        console.log(`✅ Level ${upline.level}: ${upline.sponsor_name} (${upline.sponsor_id}) gets ₹${commissionAmount} from ${newMemberId}`);
-      } else {
-        // console.log(`⚠️ No commission rate configured for Level ${upline.level}`);
+          console.log(`✅ Level ${upline.level}: ${upline.sponsor_name} (${upline.sponsor_id}) gets ₹${commissionAmount} (${percentage}%)`);
+        }
       }
     }
 
-    // console.log(`💰 Total commissions calculated: ${commissions.length} for ${uplineSponsors.length} upline sponsors`);
     return commissions;
 
   } catch (error) {
     console.error("❌ Error calculating commissions:", error);
     throw error;
   }
-  */
 };
 
 /**
@@ -171,12 +173,8 @@ const calculateCommissions = async (newMemberId, directSponsorId) => {
  * @returns {Array} Array of results with success/failure status for each commission
  */
 const processCommissions = async (commissions) => {
-  return []; // COMMISSIONS DISABLED
-  /*
   try {
     const results = [];
-
-    // console.log(`🔄 Processing ${commissions.length} commissions...`);
 
     for (const commission of commissions) {
       try {
@@ -191,16 +189,15 @@ const processCommissions = async (commissions) => {
             sponsor_name: commission.sponsor_name,
             error: `Sponsor status is not active (${sponsor?.status || 'not found'})`
           });
-          // console.log(`❌ Failed Level ${commission.level}: Sponsor ${commission.sponsor_id} not active`);
           continue;
         }
 
         // Generate unique payout ID
-        const payoutId = Date.now() + Math.floor(Math.random() * 1000) + commission.level;
+        const payoutId = Date.now() + Math.floor(Math.random() * 1000) + commission.level + Math.floor(Math.random() * 1000);
 
         // Create payout record
         const payout = new PayoutModel({
-          payout_id: payoutId,
+          payout_id: payoutId.toString(),
           date: new Date().toISOString().split('T')[0],
           memberId: commission.sponsor_id,
           payout_type: commission.payout_type,
@@ -218,7 +215,7 @@ const processCommissions = async (commissions) => {
 
         // Create transaction record for wallet credit
         const transaction = await createLevelBenefitsTransaction({
-          payout_id: payoutId,
+          payout_id: payoutId.toString(),
           memberId: commission.sponsor_id,
           payout_type: commission.payout_type,
           amount: commission.amount,
@@ -229,34 +226,17 @@ const processCommissions = async (commissions) => {
         results.push({
           success: true,
           level: commission.level,
-          sponsor_id: commission.sponsor_id,
-          Sponsor_code: commission.Sponsor_code,
-          sponsor_name: commission.sponsor_name,
-          sponsor_status: commission.sponsor_status,
-          amount: commission.amount,
-          payout_type: commission.payout_type,
-          benefit_type: transaction?.benefit_type || (commission.level === 1 ? "direct" : "indirect"),
-          payout: payout,
-          transaction: transaction
+          amount: commission.amount
         });
-
-        // console.log(`✅ Commission processed: Level ${commission.level} - ${commission.sponsor_name} (${commission.sponsor_id}) received ₹${commission.amount}`);
 
       } catch (error) {
         console.error(`❌ Error processing commission for level ${commission.level} (${commission.sponsor_id}):`, error);
         results.push({
           success: false,
-          level: commission.level,
-          sponsor_id: commission.sponsor_id,
-          sponsor_name: commission.sponsor_name,
           error: error.message
         });
       }
     }
-
-    const successful = results.filter(r => r.success).length;
-    const failed = results.filter(r => !r.success).length;
-    // console.log(`📊 Commission Processing Summary: ${successful} successful, ${failed} failed`);
 
     return results;
 
@@ -264,19 +244,16 @@ const processCommissions = async (commissions) => {
     console.error("❌ Error in processCommissions:", error);
     throw error;
   }
-  */
 };
 
 const createLevelBenefitsTransaction = async (transactionData) => {
-  return null; // COMMISSIONS DISABLED
-  /*
   try {
     const { payout_id, memberId, payout_type, amount, level, new_member_id } = transactionData;
 
     const lastTransaction = await TransactionModel.findOne({}).sort({ createdAt: -1 });
     let newTransactionId = 1;
     if (lastTransaction && lastTransaction.transaction_id) {
-      const lastIdNumber = parseInt(lastTransaction.transaction_id.replace(/\D/g, ""), 10) || 0;
+      const lastIdNumber = parseInt(String(lastTransaction.transaction_id).replace(/\D/g, ""), 10) || 0;
       newTransactionId = lastIdNumber + 1;
     }
 
@@ -297,13 +274,19 @@ const createLevelBenefitsTransaction = async (transactionData) => {
     });
 
     await transaction.save();
+    
+    // Add amount to sponsor's wallet balance
+    await MemberModel.findOneAndUpdate(
+      { Member_id: memberId },
+      { $inc: { wallet_balance: amount } }
+    );
+
     return transaction;
 
   } catch (error) {
     console.error("❌ Error creating transaction:", error);
     throw error;
   }
-  */
 };
 
 const updateSponsorReferrals = async (sponsorId, newMemberId) => {
@@ -463,7 +446,7 @@ const processMemberActivation = async (activatedMemberId) => {
 };
 
 module.exports = {
-  commissionRates,
+  commissionPercentages,
   getOrdinal,
   findUplineSponsors,
   createLevelBenefitsTransaction,

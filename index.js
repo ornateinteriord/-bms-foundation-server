@@ -46,14 +46,16 @@ const io = new Server(server, {
 
       const isLocalhost = /^http:\/\/localhost:\d+$/.test(origin);
       const isNgrok = origin?.endsWith("ngrok-free.dev");
-      const allowedOrigins = [
+      const socketAllowedOrigins = [
         process.env.FRONTEND_URL,
         "https://bms-foundation-web-ui.vercel.app",
         "https://mscs-beige.vercel.app",
-        "https://biccsl.vercel.app"
+        "https://biccsl.vercel.app",
+        "https://www.bmsfoundation.biz",
+        "https://bmsfoundation.biz"
       ].filter(Boolean);
 
-      if (isLocalhost || isNgrok || allowedOrigins.includes(origin)) {
+      if (isLocalhost || isNgrok || socketAllowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
@@ -70,7 +72,9 @@ const allowedOrigins = [
   process.env.FRONTEND_URL,
   "https://bms-foundation-web-ui.vercel.app",
   "https://mscs-beige.vercel.app",
-  "https://biccsl.vercel.app"
+  "https://biccsl.vercel.app",
+  "https://www.bmsfoundation.biz",
+  "https://bmsfoundation.biz"
 ].filter(Boolean);
 
 app.use(
@@ -94,7 +98,20 @@ app.use(
 );
 
 
-app.options("*", cors());
+app.options("*", cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const isLocalhost = /^http:\/\/localhost:\d+$/.test(origin);
+    const isNgrok = origin.endsWith("ngrok-free.dev");
+    if (isLocalhost || isNgrok || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS BLOCKED: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
 
 // ======================================================
 // ⚠️ IMPORTANT: RAW BODY FOR CASHFREE WEBHOOK

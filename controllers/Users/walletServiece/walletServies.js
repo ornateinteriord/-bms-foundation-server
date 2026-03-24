@@ -246,11 +246,11 @@ const getWalletWithdraw = async (req, res) => {
       )
       .reduce((acc, tx) => acc + (parseFloat(tx.ew_credit) || 0), 0);
 
-    if (withdrawalAmount < 500) {
+    if (withdrawalAmount < 100) {
       return res.status(400).json({ 
         success: false, 
-        message: "Minimum withdrawal amount is ₹500",
-        minimum: 500,
+        message: "Minimum withdrawal amount is ₹100",
+        minimum: 100,
         loanStatus: {
           hasUnpaidLoan: hasUnpaidLoan,
           isWithdrawalAllowed: !hasUnpaidLoan,
@@ -317,7 +317,7 @@ const getWalletWithdraw = async (req, res) => {
       });
     }
 
-    const deduction = withdrawalAmount * 0.15;
+    const deduction = withdrawalAmount * 0.05;
     const netAmount = withdrawalAmount - deduction;
 
     const lastTransaction = await TransactionModel.findOne({})
@@ -364,7 +364,7 @@ const getWalletWithdraw = async (req, res) => {
           grossAmount: withdrawalAmount.toFixed(2),
           deduction: deduction.toFixed(2),
           netAmount: netAmount.toFixed(2),
-          deductionRate: "15%"
+          deductionRate: "5%"
         },
         balanceDetails: {
           previousBalance: availableBalance.toFixed(2),
@@ -385,7 +385,7 @@ const getWalletWithdraw = async (req, res) => {
         },
         status: "Pending",
         calculation: {
-          deduction: `15% of ₹${withdrawalAmount.toFixed(2)} = ₹${deduction.toFixed(2)}`,
+          deduction: `5% of ₹${withdrawalAmount.toFixed(2)} = ₹${deduction.toFixed(2)}`,
           netAmount: `₹${withdrawalAmount.toFixed(2)} - ₹${deduction.toFixed(2)} = ₹${netAmount.toFixed(2)}`,
           balanceUpdate: `₹${availableBalance.toFixed(2)} - ₹${withdrawalAmount.toFixed(2)} = ₹${newAvailableBalance.toFixed(2)}`
         },
