@@ -9,6 +9,7 @@ const {
   commissionRates,
   getUplineTree
 } = require("../mlmService/mlmService");
+const { processDailyROI } = require("../roiService/roiService");
 
 // Reusable function to update referral hierarchy when a member becomes active
 const updateReferralHierarchy = async (newMemberId, sponsorId) => {
@@ -244,18 +245,8 @@ const getMemberCommissionSummary = async (req, res) => {
 
 const getDailyPayout = async (req, res) => {
   try {
-    return res.status(200).json({
-      success: true,
-      data: { daily_earnings: [] },
-      message: "Commission system disabled",
-    });
-    /*
     const userRole = req.user.role;
-    const loggedInMemberId = req.user.member_id;
     const { member_id } = req.params;
-
-    console.log("User Role:", userRole);
-    console.log("Requested Member ID:", member_id);
 
     let query = {};
 
@@ -265,73 +256,16 @@ const getDailyPayout = async (req, res) => {
       query = { member_id: member_id };
     }
 
+    // Filter strictly for ROI payouts as requested
     const transactions = await TransactionModel.find({
       ...query,
-      $or: [
-        { transaction_type: /level benefits|direct benefits/i },
-        { description: /level benefits|direct benefits/i },
-      ],
-    }).sort({ createdAt: 1 });
-
-    if (!transactions.length) {
-      return res.status(200).json({
-        success: true,
-        data: { daily_earnings: [] },
-        message: "No transactions found",
-      });
-    }
-
-    // 🔹 Group by date
-    const dailyEarnings = {};
-
-    transactions.forEach((tx) => {
-      const date = tx.createdAt.toDateString();
-      const memberId = tx.member_id;
-
-      if (!dailyEarnings[memberId]) dailyEarnings[memberId] = {};
-      if (!dailyEarnings[memberId][date]) {
-        dailyEarnings[memberId][date] = {
-          member_id: memberId,
-          date,
-          level_benefits: 0,
-          direct_benefits: 0,
-          transactions: [],
-        };
-      }
-
-      const amount = parseFloat(tx.ew_credit) || 0;
-      if (
-        tx.transaction_type?.toLowerCase().includes("level") ||
-        tx.description?.toLowerCase().includes("level")
-      ) {
-        dailyEarnings[memberId][date].level_benefits += amount;
-      } else {
-        dailyEarnings[memberId][date].direct_benefits += amount;
-      }
-
-      dailyEarnings[memberId][date].transactions.push({
-        type: tx.transaction_type || tx.description,
-        amount: tx.ew_credit,
-        time: tx.createdAt,
-        status: tx.status,
-      });
-    });
-
-    // 🔹 Flatten for easy consumption
-    const result = Object.values(dailyEarnings).flatMap((memberDays) =>
-      Object.values(memberDays).map((day) => ({
-        ...day,
-        gross_profit: (day.level_benefits + day.direct_benefits).toFixed(2),
-        level_benefits: day.level_benefits.toFixed(2),
-        direct_benefits: day.direct_benefits.toFixed(2),
-      }))
-    );
+      transaction_type: "ROI Payout",
+    }).sort({ transaction_date: -1 }); // Show latest ROI first
 
     return res.status(200).json({
       success: true,
-      data: { daily_earnings: result },
+      data: { daily_earnings: transactions },
     });
-    */
   } catch (error) {
     console.error("Error in getDailyPayout:", error);
     return res.status(500).json({
@@ -750,6 +684,19 @@ const repaymentLoan = async (req, res) => {
   }
 };
 
+const triggerDailyROI = async (req, res) => {
+  try {
+    const result = await processDailyROI();
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error processing ROI",
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   triggerMLMCommissions,
   updateReferralHierarchy,
@@ -759,4 +706,5 @@ module.exports = {
   getRewardLoansByStatus,
   processRewardLoan,
   repaymentLoan,
+  triggerDailyROI,
 };

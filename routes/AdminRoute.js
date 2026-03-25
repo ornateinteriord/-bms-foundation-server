@@ -3,7 +3,7 @@ const { getNews, addNews } = require("../controllers/Admin/News/NewsController")
 const UpdatePassword = require("../controllers/Admin/UpdatePassword");
 const getTransactionDetails = require("../controllers/Transaction/Transaction");
 const { getEpinsSummary, generatePackage } = require("../controllers/Users/Epin/epin");
-const { getDailyPayout,   getRewardLoansByStatus, processRewardLoan } = require("../controllers/Users/Payout/PayoutController");
+const { getDailyPayout,   getRewardLoansByStatus, processRewardLoan, triggerDailyROI } = require("../controllers/Users/Payout/PayoutController");
 const { getMemberDetails, UpdateMemberDetails, getMember, updateMemberStatus } = require("../controllers/Users/Profile/Profile");
 const { editTicket, getTickets } = require("../controllers/Users/Ticket/TicketConntroller");
 const Authenticated = require("../middlewares/auth");
@@ -33,5 +33,6 @@ router.get('/all-daily-payouts', Authenticated, authorizeRoles("ADMIN"), getDail
 router.get('/reward-loans/:status', getRewardLoansByStatus);
 
 router.put('/reward-loans/:memberId/:action', processRewardLoan);
+router.post('/trigger-roi', Authenticated, authorizeRoles("ADMIN"), triggerDailyROI);
 
 module.exports = router;

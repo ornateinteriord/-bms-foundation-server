@@ -3,14 +3,14 @@ const mongoose = require("mongoose");
 const payoutSchema = new mongoose.Schema(
   {
     payout_id: Number,
-    date: String,
+    date: { type: Date, default: Date.now },
     memberId: String,
     payout_type: String,
     ref_no: String,
     amount: Number,
     count: Number,
     days: Number,
-    status: String,
+    status: { type: String, default: "Approved" },
     level: { type: Number }, 
     sponsored_member_id: { type: String }, 
     sponsor_id: { type: String },

@@ -37,7 +37,11 @@ const MemberSchema = new mongoose.Schema(
     google_pay: { type: String },
     phonepe: { type: String },
     member_code: { type: String },
-    roi_status: { type: String },
+    roi_status: { type: String, enum: ["Active", "Completed", "Pending"], default: "Pending" },
+    roi_payout_count: { type: Number, default: 0 },
+    roi_payout_target: { type: Number, default: 0 },
+    roi_last_payout_date: { type: String },
+    roi_start_date: { type: String },
     upgrade_package: { type: String },
     upgrade_status: {
       type: String,
@@ -73,7 +77,8 @@ const MemberSchema = new mongoose.Schema(
       type: String,
       enum: ["NOT_CREATED", "FAILED", "CREATED"],
       default: "NOT_CREATED"
-    }
+    },
+    wallet_balance: { type: Number, default: 0 }
   },
   { timestamps: true, collection: "member_tbl" }
 );

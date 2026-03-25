@@ -18,6 +18,7 @@ const KYCRoutes = require("./routes/KYCRoutes");
 // 🔐 CASHFREE WEBHOOK CONTROLLER
 const { handleWebhook } = require("./controllers/Payments/CashfreeController");
 const connectDB = require("./models/db");
+const { initCronJobs } = require("./cron/cron");
 
 
 const app = express();
@@ -187,6 +188,8 @@ const startServer = async () => {
       console.log(`🌍 Server running on port ${PORT}`);
       console.log("🔔 Cashfree webhook ready");
       console.log("💬 WebSocket server ready");
+      // Initialize Cron Jobs
+      initCronJobs();
     });
   } catch (error) {
     console.error("❌ Server failed:", error.message);
