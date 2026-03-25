@@ -1,7 +1,9 @@
 const MemberModel = require("../../../models/Users/Member");
 const mongoose = require("mongoose");
+const moment = require("moment");
 const AdminModel = require("../../../models/Admin/Admin");
 const { triggerMLMCommissions } = require("../Payout/PayoutController");
+const { processMemberROI } = require("../roiService/roiService");
 
 const getMemberDetails = async (req, res) => {
   try {
@@ -124,6 +126,10 @@ const activateMemberPackage = async (req, res) => {
         status: 'active',
         spackage: selectedPackage.name,
         package_value: selectedPackage.value,
+        roi_status: 'Active',
+        roi_payout_count: 0,
+        roi_payout_target: selectedPackage.value * 2,
+        roi_start_date: moment().format("YYYY-MM-DD"),
       },
       { new: true }
     );
@@ -134,6 +140,9 @@ const activateMemberPackage = async (req, res) => {
         message: "Member not found"
       });
     }
+
+    // Trigger ROI Payout immediately if activated on a weekday
+    await processMemberROI(updatedMember);
 
     // MLM activation only when status changes to active
     if (oldStatus !== "active" && updatedMember.status === "active") {
@@ -305,7 +314,19 @@ const updateMemberStatus = async (req, res) => {
     }
 
     const oldStatus = existingMember.status;
-    const updatedMember = await MemberModel.findOneAndUpdate(query, { status }, { new: true });
+    const updatePayload = { status };
+    if (oldStatus !== "active" && status === "active") {
+        updatePayload.roi_status = 'Active';
+        updatePayload.roi_payout_count = 0;
+        updatePayload.roi_start_date = moment().format("YYYY-MM-DD");
+        // If we have existing member's package value, we use it. Otherwise, initialize to 0 or handle separately.
+        updatePayload.roi_payout_target = (existingMember.package_value || 0) * 2;
+    }
+
+    const updatedMember = await MemberModel.findOneAndUpdate(query, updatePayload, { new: true });
+
+    // Trigger ROI Payout immediately if activated on a weekday
+    await processMemberROI(updatedMember);
 
     // If status changed to active (from any status) trigger MLM commissions
     if (oldStatus !== "active" && status === "active") {

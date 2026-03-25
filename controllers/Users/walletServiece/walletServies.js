@@ -78,6 +78,14 @@ const getWalletOverview = async (req, res) => {
       .filter(tx => tx.transaction_type === "Withdrawal" && tx.status === "Pending")
       .reduce((acc, tx) => acc + (parseFloat(tx.ew_debit) || 0), 0);
 
+    const roiBenefits = nonLoanTransactions
+      .filter(tx => 
+        (tx.transaction_type === "ROI Payout" || 
+        tx.description?.includes("ROI")) &&
+        tx.status === "Completed"
+      )
+      .reduce((acc, tx) => acc + (parseFloat(tx.ew_credit) || 0), 0);
+
     // Calculate loan amounts separately (for information only)
     const loanTransactions = transactions.filter(tx => 
       tx.transaction_type?.toLowerCase().includes('loan') ||
@@ -101,7 +109,8 @@ const getWalletOverview = async (req, res) => {
         levelBenefits: levelBenefits.toFixed(2),
         directBenefits: directBenefits.toFixed(2),
         repaymentCommission: repaymentCommission.toFixed(2),
-        totalBenefits: (levelBenefits + directBenefits + repaymentCommission).toFixed(2),
+        roiBenefits: roiBenefits.toFixed(2),
+        totalBenefits: (levelBenefits + directBenefits + repaymentCommission + roiBenefits).toFixed(2),
         pendingWithdrawals: pendingWithdrawals.toFixed(2),
         // Loan information (for transparency)
         loanInfo: {
@@ -236,13 +245,19 @@ const getWalletWithdraw = async (req, res) => {
         tx.description === "Direct benefits"
       )
       .reduce((acc, tx) => acc + (parseFloat(tx.ew_credit) || 0), 0);
-
     const repaymentCommission = completedTransactions
       .filter(tx => 
         tx.transaction_type === "Repayment Commission" || 
         tx.description === "Repayment Commission" ||
         tx.transaction_type === "Repayment commission" || 
         tx.description === "Repayment commission"
+      )
+      .reduce((acc, tx) => acc + (parseFloat(tx.ew_credit) || 0), 0);
+
+    const roiBenefits = completedTransactions
+      .filter(tx => 
+        tx.transaction_type === "ROI Payout" || 
+        tx.description?.includes("ROI")
       )
       .reduce((acc, tx) => acc + (parseFloat(tx.ew_credit) || 0), 0);
 
@@ -310,7 +325,8 @@ const getWalletWithdraw = async (req, res) => {
           levelBenefits: levelBenefits.toFixed(2),
           directBenefits: directBenefits.toFixed(2),
           repaymentCommission: repaymentCommission.toFixed(2),
-          totalBenefits: (levelBenefits + directBenefits + repaymentCommission).toFixed(2),
+          roiBenefits: roiBenefits.toFixed(2),
+          totalBenefits: (levelBenefits + directBenefits + repaymentCommission + roiBenefits).toFixed(2),
           availableBalance: availableBalance.toFixed(2)
         },
         note: "Loan amounts are not included in available balance for withdrawals."
@@ -346,7 +362,8 @@ const getWalletWithdraw = async (req, res) => {
         level_benefits_used: levelBenefits,
         direct_benefits_used: directBenefits,
         repayment_commission_used: repaymentCommission,
-        total_benefits_available: levelBenefits + directBenefits + repaymentCommission
+        roi_benefits_used: roiBenefits,
+        total_benefits_available: levelBenefits + directBenefits + repaymentCommission + roiBenefits
       }
     });
 
@@ -375,8 +392,9 @@ const getWalletWithdraw = async (req, res) => {
           levelBenefits: levelBenefits.toFixed(2),
           directBenefits: directBenefits.toFixed(2),
           repaymentCommission: repaymentCommission.toFixed(2),
-          totalBenefits: (levelBenefits + directBenefits + repaymentCommission).toFixed(2),
-          benefitsContribution: `${((levelBenefits + directBenefits + repaymentCommission) / (totalCredits || 1) * 100).toFixed(1)}% of total income`
+          roiBenefits: roiBenefits.toFixed(2),
+          totalBenefits: (levelBenefits + directBenefits + repaymentCommission + roiBenefits).toFixed(2),
+          benefitsContribution: `${((levelBenefits + directBenefits + repaymentCommission + roiBenefits) / (totalCredits || 1) * 100).toFixed(1)}% of total income`
         },
         loanStatus: {
           hasUnpaidLoan: false,
