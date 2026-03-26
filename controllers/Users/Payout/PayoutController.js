@@ -697,6 +697,39 @@ const triggerDailyROI = async (req, res) => {
   }
 };
 
+const getROIBenefits = async (req, res) => {
+  try {
+    const userRole = req.user.role;
+    const { member_id } = req.params;
+
+    let query = {};
+
+    if (userRole === "ADMIN") {
+      query = member_id ? { member_id } : {};
+    } else if (userRole === "USER") {
+      query = { member_id: member_id };
+    }
+
+    // Filter strictly for ROI Level Benefits
+    const transactions = await TransactionModel.find({
+      ...query,
+      transaction_type: "ROI Level Benefit",
+    }).sort({ transaction_date: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: { roi_benefits: transactions },
+    });
+  } catch (error) {
+    console.error("Error in getROIBenefits:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   triggerMLMCommissions,
   updateReferralHierarchy,
@@ -707,4 +740,5 @@ module.exports = {
   processRewardLoan,
   repaymentLoan,
   triggerDailyROI,
+  getROIBenefits,
 };
