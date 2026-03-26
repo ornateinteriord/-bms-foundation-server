@@ -29,185 +29,205 @@ const getWorkingDaysInWindow = (startDate, calendarDays) => {
     return count;
 };
 
+let isROIProcessing = false;
+
 /**
- * Process daily ROI for all eligible members
+ * Process daily ROI for all eligible members (Smart Catch-up)
+ * Handles multi-day gaps automatically with production-grade safety.
  */
 const processDailyROI = async () => {
+    if (isROIProcessing) {
+        console.log("⚠️ [ROI] Process already running. Skipping concurrent trigger.");
+        return { success: false, message: "Process already running" };
+    }
+
+    isROIProcessing = true;
     try {
-        const today = moment().format("YYYY-MM-DD");
-
-        // 1. Skip weekends
-        if (isWeekend(today)) {
-            console.log(`📅 Skipping ROI Payout: Today (${today}) is a weekend.`);
-            return { success: true, message: "Skipping weekends", count: 0 };
-        }
-
-        // 2. Find eligible active members
-        const eligibleMembers = await MemberModel.find({
+        // Fix: Use moment object for robust date comparison
+        const today = moment().startOf("day");
+        
+        // Find all active members
+        const activeMembers = await MemberModel.find({
             status: "active",
-            roi_status: "Active",
-            roi_last_payout_date: { $ne: today } // Prevent double payout on same day
+            roi_status: "Active"
         });
 
-        console.log(`🚀 Processing ROI for ${eligibleMembers.length} members...`);
+        console.log(`🚀 [ROI] [${today.format("YYYY-MM-DD")}] Starting Smart Processing for ${activeMembers.length} active members...`);
 
-        let processedCount = 0;
+        let totalPayoutsProcessed = 0;
+        let membersUpdatedCount = 0;
 
-        for (const member of eligibleMembers) {
+        for (const member of activeMembers) {
+            // Start a new session for each member catch-up to ensure atomicity
+            const session = await mongoose.startSession();
+            session.startTransaction();
+
             try {
-                // Determine ROI Window and Fixed 300 Day Logic
-                const totalTarget = member.roi_payout_target || (member.package_value * 2) || 0;
-                if (totalTarget <= 0) {
-                    console.log(`⚠️ Member ${member.Member_id} (${member.Name}) has no ROI target set. Skipping.`);
-                    continue;
+                let startRefDate = member.roi_last_payout_date || member.roi_start_date || moment(member.createdAt).format("YYYY-MM-DD");
+                let currentDayPtr = moment(startRefDate).startOf("day").add(1, "days");
+                
+                let memberPayoutsThisRun = 0;
+                const originalTotalCount = member.roi_payout_count || 0;
+
+                // Loop from last payout to Today
+                while (currentDayPtr.isSameOrBefore(today, "day")) {
+                    const processingDateStr = currentDayPtr.format("YYYY-MM-DD");
+
+                    // Only process on weekdays (Mon-Fri)
+                    if (!isWeekend(processingDateStr)) {
+                        const totalTargetAmount = member.roi_payout_target || (member.package_value * 2) || 0;
+                        
+                        if (totalTargetAmount > 0) {
+                            const dailyPayoutAmount = parseFloat((totalTargetAmount / 300).toFixed(2));
+                            const nextCount = originalTotalCount + memberPayoutsThisRun + 1;
+
+                            if (nextCount <= 300) {
+                                const payoutIdNum = Date.now() + Math.floor(Math.random() * 1000);
+                                
+                                // Create Payout Entry (Historical Date)
+                                const payout = new PayoutModel({
+                                    payout_id: payoutIdNum,
+                                    date: currentDayPtr.toDate(),
+                                    memberId: member.Member_id,
+                                    payout_type: "ROI",
+                                    ref_no: `ROI-${member.Member_id}-${nextCount}`,
+                                    amount: dailyPayoutAmount,
+                                    count: nextCount,
+                                    days: 300,
+                                    status: "Approved",
+                                    description: "ROI payout"
+                                });
+
+                                // Create Transaction Record
+                                const transaction = new TransactionModel({
+                                    transaction_id: `ROI-TX-${payoutIdNum}`,
+                                    transaction_date: processingDateStr,
+                                    member_id: member.Member_id,
+                                    Name: member.Name,
+                                    mobileno: member.mobileno,
+                                    description: `Daily ROI Payout (Day ${nextCount}/300)`,
+                                    transaction_type: "ROI Payout",
+                                    ew_credit: dailyPayoutAmount.toString(),
+                                    ew_debit: "0",
+                                    status: "Completed",
+                                    benefit_type: "ROI",
+                                    reference_no: payout.ref_no
+                                });
+
+                                // Distribute Level Commissions (MLM)
+                                // Pass session if mlmService supports it (currently assuming standard for safety)
+                                await mlmService.distributeROICommission(member.Member_id, dailyPayoutAmount);
+
+                                await payout.save({ session });
+                                await transaction.save({ session });
+
+                                // Update local state for member
+                                member.wallet_balance = (member.wallet_balance || 0) + dailyPayoutAmount;
+                                member.roi_payout_count = nextCount;
+
+                                if (nextCount >= 300) {
+                                    member.roi_status = "Completed";
+                                }
+
+                                memberPayoutsThisRun++;
+                                totalPayoutsProcessed++;
+                            }
+                        }
+                    }
+
+                    // Always advance date to mark it as processed
+                    member.roi_last_payout_date = processingDateStr;
+                    currentDayPtr.add(1, "days");
+
+                    if (member.roi_status === "Completed") break;
                 }
 
-                const dailyAmount = parseFloat((totalTarget / 300).toFixed(2));
-
-                // 4. DB-Driven Count (Audit-safe)
-                const lastPayout = await PayoutModel.findOne({ memberId: member.Member_id })
-                    .sort({ createdAt: -1 });
-                const nextCount = (lastPayout && typeof lastPayout.count === 'number') ? (lastPayout.count + 1) : 1;
-
-                // Create Payout Record
-                const payoutId = Date.now() + Math.floor(Math.random() * 1000);
-                const payout = new PayoutModel({
-                    payout_id: payoutId,
-                    date: new Date(),
-                    memberId: member.Member_id,
-                    payout_type: "ROI",
-                    ref_no: `ROI-${member.Member_id}-${nextCount}`,
-                    amount: dailyAmount,
-                    count: nextCount,
-                    days: 300, // Total calendar window
-                    status: "Approved",
-                    description: "ROI payout"
-                });
-
-                // Create Transaction Record (for wallet/passbook)
-                const transaction = new TransactionModel({
-                    transaction_id: `ROI-TX-${payoutId}`,
-                    transaction_date: today,
-                    member_id: member.Member_id,
-                    Name: member.Name,
-                    mobileno: member.mobileno,
-                    description: `Daily ROI Payout (Day ${nextCount}/300)`,
-                    transaction_type: "ROI Payout",
-                    ew_credit: dailyAmount.toString(),
-                    ew_debit: "0",
-                    status: "Completed",
-                    benefit_type: "ROI",
-                    reference_no: payout.ref_no
-                });
-
-                // Update Member Metadata and Balance atomically
-                member.roi_payout_count = nextCount;
-                member.roi_last_payout_date = today;
-                member.wallet_balance = (member.wallet_balance || 0) + dailyAmount;
-
-                if (nextCount >= 300) {
-                    member.roi_status = "Completed";
+                if (memberPayoutsThisRun > 0 || member.isModified('roi_last_payout_date')) {
+                    await member.save({ session });
+                    await session.commitTransaction();
+                    if (memberPayoutsThisRun > 0) {
+                        membersUpdatedCount++;
+                        console.log(`💰 [%] [Day ${member.roi_payout_count}/300] Credited ₹${memberPayoutsThisRun} days to ${member.Member_id}.`);
+                    }
+                } else {
+                    await session.abortTransaction();
                 }
 
-                await Promise.all([
-                    payout.save(),
-                    transaction.save(),
-                    member.save()
-                ]);
-
-                // Distribute ROI Level Commission
-                try {
-                    await mlmService.distributeROICommission(member.Member_id, dailyAmount);
-                } catch (mlmError) {
-                    console.error(`❌ MLM Error for member ${member.Member_id}:`, mlmError.message);
-                }
-
-                console.log(`💰 [%] [Day ${nextCount}/300] Credited ₹${dailyAmount} to ${member.Member_id} (${member.Name}). Status: ${member.roi_status}`);
-                processedCount++;
             } catch (memberError) {
-                console.error(`❌ Error processing ROI for member ${member.Member_id}:`, memberError.message);
+                await session.abortTransaction();
+                console.error(`❌ ROI Error for ${member.Member_id}:`, memberError.message);
+            } finally {
+                session.endSession();
             }
         }
 
-        console.log(`✅ ROI Processing Complete. Processed: ${processedCount}/${eligibleMembers.length}`);
-        return { success: true, processedCount, totalEligible: eligibleMembers.length };
+        console.log(`✅ [ROI] Smart Processing Complete. Total Payouts: ${totalPayoutsProcessed}.`);
+        return { success: true, processedCount: totalPayoutsProcessed, membersUpdated: membersUpdatedCount };
 
-  } catch (error) {
-    console.error("❌ Error in processDailyROI:", error);
-    throw error;
-  }
+    } catch (globalError) {
+        console.error("❌ Global Error in processDailyROI:", globalError);
+        throw globalError;
+    } finally {
+        isROIProcessing = false;
+    }
 };
 
 /**
- * Process ROI for a single member (usually called during activation)
+ * Process ROI for a single member (typically called during activation)
  */
 const processMemberROI = async (member) => {
+    // Start session for atomic single run
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
-        const today = moment().format("YYYY-MM-DD");
+        const todayStr = moment().format("YYYY-MM-DD");
         
-        // Skip if weekend
-        if (isWeekend(today)) return { success: false, message: "Weekend" };
-        
-        // Skip if already paid today
-        if (member.roi_last_payout_date === today) return { success: false, message: "Already paid" };
+        if (isWeekend(todayStr)) {
+            await session.abortTransaction();
+            session.endSession();
+            return { success: false, message: "Weekend" };
+        }
 
-        const totalTarget = member.roi_payout_target || (member.package_value * 2) || 0;
-        if (totalTarget <= 0) return { success: false, message: "No target" };
+        if (member.roi_last_payout_date === todayStr) {
+            await session.abortTransaction();
+            session.endSession();
+            return { success: false, message: "Already paid" };
+        }
 
-        const dailyAmount = parseFloat((totalTarget / 300).toFixed(2));
-        
-        // DB-Driven Count (Audit-safe)
-        const lastPayout = await PayoutModel.findOne({ memberId: member.member_id || member.Member_id })
-            .sort({ createdAt: -1 });
-        const nextCount = (lastPayout && typeof lastPayout.count === 'number') ? (lastPayout.count + 1) : 1;
+        const dailyAmt = parseFloat(((member.roi_payout_target || (member.package_value * 2)) / 300).toFixed(2));
+        const nextIdx = (member.roi_payout_count || 0) + 1;
 
-        const payoutId = Date.now() + Math.floor(Math.random() * 1000);
+        const pId = Date.now() + Math.floor(Math.random() * 1000);
         const payout = new PayoutModel({
-            payout_id: payoutId,
-            date: new Date(),
-            memberId: member.Member_id,
-            payout_type: "ROI",
-            ref_no: `ROI-${member.Member_id}-${nextCount}`,
-            amount: dailyAmount,
-            count: nextCount,
-            days: 300,
-            status: "Approved",
-            description: "ROI payout"
+            payout_id: pId, date: new Date(), memberId: member.Member_id,
+            payout_type: "ROI", ref_no: `ROI-${member.Member_id}-${nextIdx}`,
+            amount: dailyAmt, count: nextIdx, days: 300, status: "Approved"
         });
 
         const transaction = new TransactionModel({
-            transaction_id: `ROI-TX-${payoutId}`,
-            transaction_date: today,
-            member_id: member.Member_id,
-            Name: member.Name,
-            mobileno: member.mobileno,
-            description: `Daily ROI Payout (Day ${nextCount}/300)`,
-            transaction_type: "ROI Payout",
-            ew_credit: dailyAmount.toString(),
-            ew_debit: "0",
-            status: "Completed",
-            benefit_type: "ROI",
-            reference_no: payout.ref_no
+            transaction_id: `ROI-TX-${pId}`, transaction_date: todayStr,
+            member_id: member.Member_id, Name: member.Name, mobileno: member.mobileno,
+            description: `Daily ROI Payout (Day ${nextIdx}/300)`, transaction_type: "ROI Payout",
+            ew_credit: dailyAmt.toString(), ew_debit: "0", status: "Completed", benefit_type: "ROI"
         });
 
-        member.roi_payout_count = nextCount;
-        member.roi_last_payout_date = today;
-        member.wallet_balance = (member.wallet_balance || 0) + dailyAmount;
-        if (nextCount >= 300) member.roi_status = "Completed";
+        member.roi_payout_count = nextIdx;
+        member.roi_last_payout_date = todayStr;
+        member.wallet_balance = (member.wallet_balance || 0) + dailyAmt;
+        if (nextIdx >= 300) member.roi_status = "Completed";
 
-        await Promise.all([payout.save(), transaction.save(), member.save()]);
+        await Promise.all([payout.save({ session }), transaction.save({ session }), member.save({ session })]);
+        await session.commitTransaction();
+        await mlmService.distributeROICommission(member.Member_id, dailyAmt);
 
-        // Distribute ROI Level Commission
-        try {
-            await mlmService.distributeROICommission(member.Member_id, dailyAmount);
-        } catch (mlmError) {
-            console.error(`❌ MLM Error for member ${member.Member_id}:`, mlmError.message);
-        }
-
-        return { success: true, amount: dailyAmount };
-    } catch (error) {
-        console.error(`❌ Error in processMemberROI for ${member.Member_id}:`, error.message);
-        return { success: false, error: error.message };
+        return { success: true, amount: dailyAmt };
+    } catch (err) {
+        await session.abortTransaction();
+        console.error(`❌ ROI Single Error for ${member.Member_id}:`, err.message);
+        return { success: false, error: err.message };
+    } finally {
+        session.endSession();
     }
 };
 
