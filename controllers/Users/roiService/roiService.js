@@ -1,6 +1,7 @@
 const MemberModel = require("../../../models/Users/Member");
 const PayoutModel = require("../../../models/Payout/Payout");
 const TransactionModel = require("../../../models/Transaction/Transaction");
+const mlmService = require("../mlmService/mlmService");
 const moment = require("moment");
 const mongoose = require("mongoose");
 
@@ -114,7 +115,14 @@ const processDailyROI = async () => {
                     member.save()
                 ]);
 
-                console.log(`💰 [%] [Day ${nextCount}/${workingDaysLimit}] Credited ₹${dailyAmount} to ${member.Member_id} (${member.Name}). Status: ${member.roi_status}`);
+                // Distribute ROI Level Commission
+                try {
+                    await mlmService.distributeROICommission(member.Member_id, dailyAmount);
+                } catch (mlmError) {
+                    console.error(`❌ MLM Error for member ${member.Member_id}:`, mlmError.message);
+                }
+
+                console.log(`💰 [%] [Day ${nextCount}/300] Credited ₹${dailyAmount} to ${member.Member_id} (${member.Name}). Status: ${member.roi_status}`);
                 processedCount++;
             } catch (memberError) {
                 console.error(`❌ Error processing ROI for member ${member.Member_id}:`, memberError.message);
@@ -188,6 +196,14 @@ const processMemberROI = async (member) => {
         if (nextCount >= 300) member.roi_status = "Completed";
 
         await Promise.all([payout.save(), transaction.save(), member.save()]);
+
+        // Distribute ROI Level Commission
+        try {
+            await mlmService.distributeROICommission(member.Member_id, dailyAmount);
+        } catch (mlmError) {
+            console.error(`❌ MLM Error for member ${member.Member_id}:`, mlmError.message);
+        }
+
         return { success: true, amount: dailyAmount };
     } catch (error) {
         console.error(`❌ Error in processMemberROI for ${member.Member_id}:`, error.message);

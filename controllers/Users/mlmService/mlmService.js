@@ -445,6 +445,124 @@ const processMemberActivation = async (activatedMemberId) => {
   */
 };
 
+/**
+ * Distributes commission to 10 levels of upline sponsors when a member receives ROI
+ * 
+ * @param {string} memberId - The member ID who received ROI
+ * @param {number} roiAmount - The ROI amount received
+ * @returns {Promise<Array>} Results of commission distribution
+ */
+const distributeROICommission = async (memberId, roiAmount) => {
+  try {
+    if (!roiAmount || roiAmount <= 0) return [];
+
+    // Find all upline sponsors up to 10 levels
+    const uplineSponsors = await findUplineSponsors(memberId, 10);
+    if (uplineSponsors.length === 0) return [];
+
+    const results = [];
+
+    for (const upline of uplineSponsors) {
+      // Only active sponsors are eligible for commissions
+      if (upline.sponsor_status !== 'active') {
+        results.push({
+          level: upline.level,
+          sponsor_id: upline.sponsor_id,
+          success: false,
+          error: "Sponsor not active"
+        });
+        continue;
+      }
+
+      // Get percentage based on level from existing commissionPercentages
+      const percentage = commissionPercentages[upline.level] || 0;
+      if (percentage <= 0) continue;
+
+      const commissionAmount = Number(((roiAmount * percentage) / 100).toFixed(2));
+      if (commissionAmount <= 0) continue;
+
+      try {
+        const payoutId = Date.now() + Math.floor(Math.random() * 1000) + upline.level + Math.floor(Math.random() * 1000);
+        const today = new Date().toISOString().split('T')[0];
+
+        // Create payout record
+        const payout = new PayoutModel({
+          payout_id: payoutId.toString(),
+          date: today,
+          memberId: upline.sponsor_id,
+          payout_type: "ROI Level Benefit",
+          ref_no: memberId,
+          amount: commissionAmount,
+          level: upline.level,
+          sponsored_member_id: memberId,
+          sponsor_id: upline.sponsor_id,
+          status: "Completed",
+          description: `ROI Level ${upline.level} benefit (${percentage}%) from member ${memberId}'s ROI (₹${roiAmount})`,
+          sponsor_status: upline.sponsor_status
+        });
+
+        await payout.save();
+
+        // Create transaction record for wallet credit
+        const lastTransaction = await TransactionModel.findOne({}).sort({ createdAt: -1 });
+        let newTransactionId = 1;
+        if (lastTransaction && lastTransaction.transaction_id) {
+          const lastIdNumber = parseInt(String(lastTransaction.transaction_id).replace(/\D/g, ""), 10) || 0;
+          newTransactionId = lastIdNumber + 1;
+        }
+
+        const transaction = new TransactionModel({
+          transaction_id: newTransactionId.toString(),
+          transaction_date: today,
+          member_id: upline.sponsor_id,
+          reference_no: payoutId.toString(),
+          description: `ROI Level ${upline.level} Benefit`,
+          transaction_type: "ROI Level Benefit",
+          ew_credit: commissionAmount.toString(),
+          ew_debit: "0",
+          status: "Completed",
+          level: upline.level,
+          benefit_type: "ROI Level Income",
+          related_member_id: memberId,
+          related_payout_id: payoutId
+        });
+
+        await transaction.save();
+
+        // Add amount to sponsor's wallet balance
+        await MemberModel.findOneAndUpdate(
+          { Member_id: upline.sponsor_id },
+          { $inc: { wallet_balance: commissionAmount } }
+        );
+
+        results.push({
+          level: upline.level,
+          sponsor_id: upline.sponsor_id,
+          amount: commissionAmount,
+          success: true
+        });
+
+        console.log(`💰 ROI Level ${upline.level}: ${upline.sponsor_id} gets ₹${commissionAmount} from ${memberId}`);
+
+      } catch (err) {
+        console.error(`❌ Error distributing ROI commission to ${upline.sponsor_id}:`, err);
+        results.push({
+          level: upline.level,
+          sponsor_id: upline.sponsor_id,
+          success: false,
+          error: err.message
+        });
+      }
+    }
+
+    return results;
+
+  } catch (error) {
+    console.error("❌ Error in distributeROICommission:", error);
+    throw error;
+  }
+};
+
 module.exports = {
   commissionPercentages,
   getOrdinal,
@@ -455,5 +573,6 @@ module.exports = {
   processCommissions,
   getUplineTree,
   getCommissionSummary,
-  processMemberActivation
+  processMemberActivation,
+  distributeROICommission
 };
