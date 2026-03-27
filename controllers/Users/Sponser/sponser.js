@@ -27,7 +27,10 @@ const getSponsers = async (req, res) => {
           profile_image: 1,
           mobileno: 1,
           Sponsor_code: 1,
-          Sponsor_name: 1
+          Sponsor_name: 1,
+          wallet_balance: 1,
+          total_team: 1,
+          direct_referrals: 1
         }
       }
     ]);
