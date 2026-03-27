@@ -13,6 +13,8 @@ const UserRoutes = require("./routes/UserRoutes");
 const AdminRoutes = require("./routes/AdminRoute");
 const PaymentRoutes = require("./routes/PaymentRoutes");
 const KYCRoutes = require("./routes/KYCRoutes");
+const CronRoutes = require("./routes/CronRoutes");
+
 
 
 // 🔐 CASHFREE WEBHOOK CONTROLLER
@@ -165,6 +167,8 @@ app.use("/user", UserRoutes);
 app.use("/admin", AdminRoutes);
 app.use("/payments", PaymentRoutes);
 app.use("/kyc", KYCRoutes);
+app.use("/api/cron", CronRoutes);
+
 
 
 // ======================================================
@@ -188,9 +192,12 @@ const startServer = async () => {
       console.log(`🌍 Server running on port ${PORT}`);
       console.log("🔔 Cashfree webhook ready");
       console.log("💬 WebSocket server ready");
-      // Initialize Cron Jobs
-      initCronJobs();
+      // Initialize Cron Jobs (Only for Local/VPS, Vercel uses Crons field)
+      if (process.env.VERCEL !== "1") {
+          initCronJobs();
+      }
     });
+
   } catch (error) {
     console.error("❌ Server failed:", error.message);
     process.exit(1);
