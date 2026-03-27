@@ -3,7 +3,9 @@ const { getNews, addNews } = require("../controllers/Admin/News/NewsController")
 const UpdatePassword = require("../controllers/Admin/UpdatePassword");
 const getTransactionDetails = require("../controllers/Transaction/Transaction");
 const { getEpinsSummary, generatePackage } = require("../controllers/Users/Epin/epin");
-const { getDailyPayout,   getRewardLoansByStatus, processRewardLoan, triggerDailyROI } = require("../controllers/Users/Payout/PayoutController");
+const { getDailyPayout,   getRewardLoansByStatus, processRewardLoan, triggerDailyROI, getROISummary, getROIBenefits } = require("../controllers/Users/Payout/PayoutController");
+
+
 const { getMemberDetails, UpdateMemberDetails, getMember, updateMemberStatus } = require("../controllers/Users/Profile/Profile");
 const { editTicket, getTickets } = require("../controllers/Users/Ticket/TicketConntroller");
 const Authenticated = require("../middlewares/auth");
@@ -27,6 +29,10 @@ router.post('/generate-package',Authenticated,authorizeRoles("ADMIN"),generatePa
 router.put('/update-status/:memberId',updateMemberStatus)
 // Admin can access all payouts or filter by member
 router.get('/all-daily-payouts', Authenticated, authorizeRoles("ADMIN"), getDailyPayout);
+router.get('/roi-summary', Authenticated, authorizeRoles("ADMIN"), getROISummary);
+router.get('/roi-benefits', Authenticated, authorizeRoles("ADMIN"), getROIBenefits);
+
+
 // router.get('/all-daily-payouts/:member_id', Authenticated, authorizeRoles("ADMIN"), getDailyPayout);
 
 
