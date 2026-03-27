@@ -87,8 +87,7 @@ const getWalletOverview = async (req, res) => {
 
     const roiBenefits = nonLoanTransactions
       .filter(tx =>
-        (tx.transaction_type === "ROI Payout" ||
-          tx.description?.includes("ROI")) &&
+        tx.transaction_type === "ROI Payout" &&
         tx.status === "Completed"
       )
       .reduce((acc, tx) => acc + (parseFloat(tx.ew_credit) || 0), 0);
@@ -264,8 +263,7 @@ const getWalletWithdraw = async (req, res) => {
 
     const roiBenefits = completedTransactions
       .filter(tx =>
-        tx.transaction_type === "ROI Payout" ||
-        tx.description?.includes("ROI")
+        tx.transaction_type === "ROI Payout"
       )
       .reduce((acc, tx) => acc + (parseFloat(tx.ew_credit) || 0), 0);
 
@@ -376,6 +374,12 @@ const getWalletWithdraw = async (req, res) => {
     });
 
     await newTransaction.save();
+
+    // Deduct from member's wallet_balance field (sync with Available Balance)
+    await MemberModel.findOneAndUpdate(
+      { Member_id: memberId },
+      { $inc: { wallet_balance: -withdrawalAmount } }
+    );
 
     let newAvailableBalance = availableBalance - withdrawalAmount;
     newAvailableBalance = Math.max(0, newAvailableBalance);

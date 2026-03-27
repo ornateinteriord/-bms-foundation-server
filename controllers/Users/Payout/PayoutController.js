@@ -266,6 +266,8 @@ const getDailyPayout = async (req, res) => {
       success: true,
       data: { daily_earnings: transactions },
     });
+
+
   } catch (error) {
     console.error("Error in getDailyPayout:", error);
     return res.status(500).json({
@@ -730,6 +732,60 @@ const getROIBenefits = async (req, res) => {
   }
 };
 
+const getROISummary = async (req, res) => {
+  try {
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    // 1. Total ROI Distributed
+    const totalROIResult = await TransactionModel.aggregate([
+      { $match: { transaction_type: "ROI Payout", status: "Completed" } },
+      { $group: { _id: null, total: { $sum: { $toDouble: "$ew_credit" } } } }
+    ]);
+    const totalROIDistributed = totalROIResult[0]?.total || 0;
+
+    // 2. Today's Payouts
+    const todaysPayoutsResult = await TransactionModel.aggregate([
+      { 
+        $match: { 
+          transaction_type: "ROI Payout", 
+          status: "Completed",
+          transaction_date: todayStr
+        } 
+      },
+      { $group: { _id: null, total: { $sum: { $toDouble: "$ew_credit" } }, count: { $sum: 1 } } }
+    ]);
+    const todaysTotal = todaysPayoutsResult[0]?.total || 0;
+    const todaysCount = todaysPayoutsResult[0]?.count || 0;
+
+    // 3. Active ROI Contracts
+
+
+    const activeContractsCount = await MemberModel.countDocuments({
+      status: "active",
+      roi_status: "Active"
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalROIDistributed,
+        todaysTotal,
+        todaysCount,
+        activeContractsCount,
+        lastUpdated: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error("Error in getROISummary:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+
 module.exports = {
   triggerMLMCommissions,
   updateReferralHierarchy,
@@ -741,4 +797,6 @@ module.exports = {
   repaymentLoan,
   triggerDailyROI,
   getROIBenefits,
+  getROISummary,
 };
+
