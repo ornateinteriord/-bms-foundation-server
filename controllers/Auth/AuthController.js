@@ -7,15 +7,16 @@ const {
 const { generateOTP, storeOTP, verifyOTP } = require("../../utils/OtpService");
 const { generateMSCSEmail } = require("../../utils/generateMSCSEmail");
 const { updateSponsorReferrals } = require("../../controllers/Users/mlmService/mlmService");
+const path = require("path");
 
 const recoverySubject = "MSI - Password Recovery";
-const resetPasswordSubject =  "MSI - OTP Verification";
+const resetPasswordSubject = "MSI - OTP Verification";
 
 const generateUniqueMemberId = async () => {
   let newNumber = 1;
   // Get the most recently created member with a BMS ID
   const lastMember = await MemberModel.findOne({ Member_id: /^BMS/ }).sort({ _id: -1 });
-  
+
   if (lastMember && lastMember.Member_id) {
     const lastNumberStr = lastMember.Member_id.replace('BMS', '');
     const lastNumber = parseInt(lastNumberStr, 10);
@@ -25,13 +26,13 @@ const generateUniqueMemberId = async () => {
   }
 
   let finalId = `BMS${String(newNumber).padStart(6, '0')}`;
-  
+
   // Guarantee uniqueness
   while (await MemberModel.exists({ Member_id: finalId })) {
     newNumber++;
     finalId = `BMS${String(newNumber).padStart(6, '0')}`;
   }
-  
+
   return finalId;
 };
 
@@ -44,7 +45,7 @@ const signup = async (req, res) => {
     // }
 
     const memberId = await generateUniqueMemberId();
-    
+
     // Find the sponsor if provided
     let sponsor = null;
     if (sponsorId) {
@@ -59,12 +60,12 @@ const signup = async (req, res) => {
       email,
       password,
       Name,
-      
+
       // Assign sponsor if provided
       sponsor_id: sponsorId || null,
       Sponsor_code: sponsorId || null,
       Sponsor_name: sponsor ? sponsor.Name : null,
-      
+
       ...otherDetails,
     });
     await newMember.save();
@@ -82,9 +83,9 @@ const signup = async (req, res) => {
     try {
 
       const { welcomeMessage, welcomeSubject } = generateMSCSEmail(memberId, password, Name);
-      
+
       const textContent = `Dear ${Name}, Your account registration with MSI has been completed. Member ID: ${memberId}, Password: ${password}. Your account is under verification process.`;
-      
+
 
       await sendMail(email, welcomeSubject, welcomeMessage, textContent);
 
@@ -114,7 +115,7 @@ const getSponsorDetails = async (req, res) => {
     const sponsor = await MemberModel.findOne({ Member_id: ref });
     if (!sponsor) {
       return res
-      .status(404)
+        .status(404)
         .json({ success: false, message: "Invalid Sponsor Code" });
     }
     res.json({
@@ -133,8 +134,8 @@ const recoverPassword = async (req, res) => {
     const user = await MemberModel.findOne({ email });
     if (!user) {
       return res
-      .status(404)
-      .json({ success: false, message: "Email not registered" });
+        .status(404)
+        .json({ success: false, message: "Email not registered" });
     }
     const recoveryDescription = `Dear Member,
 
@@ -162,16 +163,12 @@ const resetPassword = async (req, res) => {
         .json({ success: false, message: "Email not registered" });
     }
 
-    if (otp && !password) {
+    if (otp && password) {
       if (!verifyOTP(email, otp)) {
         return res
           .status(400)
           .json({ success: false, message: "Invalid OTP or expired" });
       }
-      return res.json({ success: true, message: "OTP verified. Now set a new password." });
-    }
-    if (password) {
-    
       user.password = password;
       await user.save();
 
@@ -180,19 +177,54 @@ const resetPassword = async (req, res) => {
         message: "Password reset successfully",
       });
     }
+
+    if (otp && !password) {
+      if (!verifyOTP(email, otp, true)) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid OTP or expired" });
+      }
+      return res.json({ success: true, message: "OTP verified. Now set a new password." });
+    }
+
+    if (password && !otp) {
+      return res
+        .status(400)
+        .json({ success: false, message: "OTP is required to set a new password" });
+    }
     const newOtp = generateOTP();
-    const resetPasswordDescription = `Dear Member,
 
-Your OTP for password reset is: ${newOtp}
+    const textContent = `Dear Member,\n\nYour OTP for password reset is: ${newOtp}\n\nPlease use this OTP to proceed with resetting your password.\n\nPlease don't share this OTP with anyone.\n\nBest regards,\nMSI Team`;
 
-Please use this OTP to proceed with resetting your password.
+    const htmlContent = `
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <img src="cid:bmslogo" alt="MSI Logo" style="max-width: 180px; height: auto;" />
+      </div>
+      <div style="background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+        <h2 style="color: #0f172a; margin-top: 0; text-align: center; font-size: 24px;">Password Reset Request</h2>
+        <p style="color: #475569; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">Dear Member,</p>
+        <p style="color: #475569; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">We received a request to reset the password for your account. Please use the following One-Time Password (OTP) to complete the process:</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <span style="font-size: 32px; font-weight: 800; color: #1e3a8a; letter-spacing: 4px; padding: 15px 30px; background-color: #eff6ff; border-radius: 8px; border: 2px dashed #bfdbfe; display: inline-block;">${newOtp}</span>
+        </div>
+        
+        <p style="color: #475569; font-size: 14px; line-height: 1.6; margin-bottom: 10px;"><strong>Security Notice:</strong> Please do not share this code with anyone. This OTP is valid for a limited time.</p>
+      </div>
+      <div style="text-align: center; margin-top: 25px; color: #94a3b8; font-size: 12px;">
+        &copy; ${new Date().getFullYear()} MSI Foundation. All rights reserved.
+      </div>
+    </div>`;
 
-Please keep don't share with anyone.
+    const attachments = [{
+      filename: 'bms_logo.png',
+      path: path.join(__dirname, '../../utils/bms_logo.png'),
+      cid: 'bmslogo'
+    }];
 
-Best regards,
-MSI Team`;
     storeOTP(email, newOtp);
-    await sendMail(email, resetPasswordSubject , resetPasswordDescription);
+    await sendMail(email, resetPasswordSubject, htmlContent, textContent, attachments);
     return res.json({ success: true, message: "OTP sent to your email" });
   } catch (error) {
     console.error("Error in resetPassword:", error);
@@ -232,17 +264,16 @@ const login = async (req, res) => {
       { expiresIn: "24h" }
     );
     return res.status(200).json({
-       
+
       success: true,
       role: userRole,
       user: foundUser,
       token,
-      message: `${
-        userRole.charAt(0).toUpperCase() + userRole.slice(1).toLowerCase()
-      } login successful`,
-      
+      message: `${userRole.charAt(0).toUpperCase() + userRole.slice(1).toLowerCase()
+        } login successful`,
+
     });
-   
+
   } catch (error) {
     console.error("Login Error:", error);
     return res
