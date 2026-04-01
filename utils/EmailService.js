@@ -40,14 +40,15 @@ const transporter = nodemailer.createTransport({
 //   return { welcomeMessage, welcomeSubject };
 // };
 
-const sendMail = async (email, subject, htmlContent, textContent = '') => {
+const sendMail = async (email, subject, htmlContent, textContent = '', attachments = []) => {
   try {
     const mailOptions = {
       from: `"MSI" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: subject,
       html: htmlContent,
-      text: textContent || 'Please view this email in an HTML compatible client.'
+      text: textContent || 'Please view this email in an HTML compatible client.',
+      ...(attachments.length > 0 && { attachments })
     };
 
     const info = await transporter.sendMail(mailOptions);
