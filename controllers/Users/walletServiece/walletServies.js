@@ -280,18 +280,7 @@ const getWalletWithdraw = async (req, res) => {
       });
     }
 
-    if (withdrawalAmount > 1000) {
-      return res.status(400).json({
-        success: false,
-        message: "Maximum withdrawal amount is ₹1000",
-        maximum: 1000,
-        loanStatus: {
-          hasUnpaidLoan: hasUnpaidLoan,
-          isWithdrawalAllowed: !hasUnpaidLoan,
-          message: hasUnpaidLoan ? "Withdrawal blocked - Unpaid loan from before last Saturday" : "No unpaid loans"
-        }
-      });
-    }
+    // Max limit check removed as per user request
 
     // Check if member has unpaid loan from before last Saturday
     if (hasUnpaidLoan) {
