@@ -15,26 +15,37 @@ router.get("/roi", async (req, res) => {
     const authHeader = req.headers.authorization;
     const cronSecret = process.env.CRON_SECRET;
 
+    // Log the incoming request for Vercel diagnostics
+    console.log(`⏰ [CRON] [${new Date().toISOString()}] ROI Trigger received.`);
+    
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-        console.warn("⚠️ [CRON] Unauthorized ROI trigger attempt.");
+        console.warn("⚠️ [CRON] Unauthorized ROI trigger attempt. Check Vercel CRON_SECRET environment variable.");
         return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    console.log("⏰ [CRON] Vercel Trigger: Starting Daily ROI Distribution...");
+    console.log("🚀 [CRON] Vercel Trigger: Starting Daily ROI Distribution...");
     
+    const startTime = Date.now();
     try {
         const result = await processDailyROI();
-        console.log("✅ [CRON] Vercel ROI Payout completed:", result);
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+
+        console.log(`✅ [CRON] Vercel ROI Payout completed in ${duration}s:`, result);
+        
         return res.status(200).json({ 
             success: true, 
             message: "ROI processing completed", 
+            duration: `${duration}s`,
             data: result 
         });
     } catch (error) {
-        console.error("❌ [CRON] Vercel ROI Error:", error.message);
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+        console.error(`❌ [CRON] Vercel ROI Error after ${duration}s:`, error.message);
+        
         return res.status(500).json({ 
             success: false, 
             message: "Internal Server Error", 
+            duration: `${duration}s`, 
             error: error.message 
         });
     }

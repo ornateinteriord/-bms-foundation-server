@@ -14,6 +14,7 @@ const AdminRoutes = require("./routes/AdminRoute");
 const PaymentRoutes = require("./routes/PaymentRoutes");
 const KYCRoutes = require("./routes/KYCRoutes");
 const CronRoutes = require("./routes/CronRoutes");
+const AddOnPackageRoutes = require("./routes/AddOnPackageRoutes");
 
 
 
@@ -168,6 +169,7 @@ app.use("/admin", AdminRoutes);
 app.use("/payments", PaymentRoutes);
 app.use("/kyc", KYCRoutes);
 app.use("/api/cron", CronRoutes);
+app.use("/api/packages/addon", AddOnPackageRoutes);
 
 
 
