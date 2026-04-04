@@ -1,5 +1,5 @@
 const generateMSCSEmail = (memberId, password, name = 'Member') => {
-  const welcomeSubject = 'MSI - Account Registration Successful';
+  const welcomeSubject = 'BMSF - Account Registration Successful';
   
   const welcomeMessage = `
     <div style="font-family: Arial, sans-serif; padding: 10px; line-height: 1.6; margin-bottom: 100px; max-width: 700px; margin: 0 auto;">
@@ -11,7 +11,7 @@ const generateMSCSEmail = (memberId, password, name = 'Member') => {
         </p>
 
         <p style="color: #374151; margin-bottom: 20px;">
-          Your account registration with <strong>Manipal Society</strong> has been successfully completed.
+          Your account registration with <strong>BMS Foundation ltd</strong> has been successfully completed.
         </p>
 
         <!-- Credentials Box -->
@@ -28,7 +28,7 @@ const generateMSCSEmail = (memberId, password, name = 'Member') => {
         <!-- Footer -->
         <div style="border-top: 2px solid #f3f4f6; padding-top: 25px; margin-top: 25px;">
           <p style="color: #6b7280; margin-bottom: 5px;">Best regards,</p>
-          <p style="color: #7e22ce; font-weight: bold; margin: 0;">Manipal Society Team</p>
+          <p style="color: #7e22ce; font-weight: bold; margin: 0;">BMS Foundation Team</p>
         </div>
       </div>
     </div>

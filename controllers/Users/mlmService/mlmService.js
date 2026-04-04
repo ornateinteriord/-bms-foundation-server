@@ -72,6 +72,7 @@ const findUplineSponsors = async (memberId, maxLevels = 15) => {
       sponsor_id: sponsor.Member_id,
       Sponsor_code: sponsor.member_code || sponsor.Member_id,
       sponsor_name: sponsor.Name,
+      sponsor_mobileno: sponsor.mobileno,
       sponsored_member_id: currentMemberId, // The member who triggered this commission
       sponsor_status: sponsor.status
     });
@@ -100,22 +101,25 @@ const findUplineSponsors = async (memberId, maxLevels = 15) => {
  * 
  * @param {string} newMemberId - The newly activated member's ID
  * @param {string} directSponsorId - The direct sponsor's ID (for reference)
+ * @param {number} specificAmount - Optional specific amount for commission
+ * @param {string} pkgType - Optional package type (e.g., "Add-On")
  * @returns {Array} Array of commission objects for eligible sponsors
  */
-const calculateCommissions = async (newMemberId, directSponsorId) => {
+const calculateCommissions = async (newMemberId, directSponsorId, specificAmount = null, pkgType = "Base") => {
   try {
-    // Find the new member to get their package_value
+    // Find the new member
     const newMember = await MemberModel.findOne({ Member_id: newMemberId });
     if (!newMember) {
       console.error(`❌ New member ${newMemberId} not found for commission calculation`);
       return [];
     }
 
-    const packageValue = Number(newMember.package_value || newMember.spackage || 0);
+    const packageValue = specificAmount !== null ? specificAmount : Number(newMember.package_value || newMember.spackage || 0);
     if (!packageValue || packageValue <= 0) {
       console.log(`⚠️ New member ${newMemberId} has invalid package amount: ${packageValue}`);
       return [];
     }
+
 
     // Find all upline sponsors up to 10 levels
     const uplineSponsors = await findUplineSponsors(newMemberId, 10);
@@ -145,11 +149,12 @@ const calculateCommissions = async (newMemberId, directSponsorId) => {
             sponsor_id: upline.sponsor_id,
             Sponsor_code: upline.Sponsor_code,
             sponsor_name: upline.sponsor_name,
+            sponsor_mobileno: upline.sponsor_mobileno,
             sponsored_member_id: upline.sponsored_member_id,
             new_member_id: newMemberId,
             amount: commissionAmount,
-            payout_type: `${getOrdinal(upline.level)} Level Benefits`,
-            description: `Level ${upline.level} commission (${percentage}%) from new member ${newMemberId}'s package (₹${packageValue})`,
+            payout_type: `${getOrdinal(upline.level)} Level Benefits (${pkgType})`,
+            description: `Level ${upline.level} commission (${percentage}%) from member ${newMemberId}'s ${pkgType} package (₹${packageValue})`,
             sponsor_status: upline.sponsor_status
           });
 
@@ -172,14 +177,14 @@ const calculateCommissions = async (newMemberId, directSponsorId) => {
  * @param {Array} commissions - Array of commission objects from calculateCommissions
  * @returns {Array} Array of results with success/failure status for each commission
  */
-const processCommissions = async (commissions) => {
+const processCommissions = async (commissions, session = null) => {
   try {
     const results = [];
 
     for (const commission of commissions) {
       try {
         // Verify sponsor is still active before processing
-        const sponsor = await MemberModel.findOne({ Member_id: commission.sponsor_id });
+        const sponsor = await MemberModel.findOne({ Member_id: commission.sponsor_id }).session(session);
 
         if (!sponsor || sponsor.status !== 'active') {
           results.push({
@@ -207,11 +212,13 @@ const processCommissions = async (commissions) => {
           sponsored_member_id: commission.new_member_id,
           sponsor_id: commission.sponsor_id,
           status: "Completed",
+          Name: sponsor.Name,
+          mobileno: sponsor.mobileno,
           description: commission.description,
           sponsor_status: commission.sponsor_status
         });
 
-        await payout.save();
+        await payout.save({ session });
 
         // Create transaction record for wallet credit
         const transaction = await createLevelBenefitsTransaction({
@@ -220,8 +227,10 @@ const processCommissions = async (commissions) => {
           payout_type: commission.payout_type,
           amount: commission.amount,
           level: commission.level,
-          new_member_id: commission.new_member_id
-        });
+          new_member_id: commission.new_member_id,
+          sponsor_name: sponsor.Name,
+          sponsor_mobileno: sponsor.mobileno
+        }, session);
 
         results.push({
           success: true,
@@ -246,26 +255,25 @@ const processCommissions = async (commissions) => {
   }
 };
 
-const createLevelBenefitsTransaction = async (transactionData) => {
+const createLevelBenefitsTransaction = async (transactionData, session = null) => {
   try {
-    const { payout_id, memberId, payout_type, amount, level, new_member_id } = transactionData;
+    const { payout_id, memberId, payout_type, amount, level, new_member_id, sponsor_name, sponsor_mobileno } = transactionData;
 
-    const lastTransaction = await TransactionModel.findOne({}).sort({ createdAt: -1 });
-    let newTransactionId = 1;
-    if (lastTransaction && lastTransaction.transaction_id) {
-      const lastIdNumber = parseInt(String(lastTransaction.transaction_id).replace(/\D/g, ""), 10) || 0;
-      newTransactionId = lastIdNumber + 1;
-    }
+    // Fixed: Performance optimization - don't query for last ID on every iteration
+    // Use a unique compound ID to ensure consistency and speed in high-concurrency 
+    const newTransactionId = `T-L-${payout_id}-${Math.floor(Math.random() * 1000)}`;
 
     const transaction = new TransactionModel({
-      transaction_id: newTransactionId.toString(),
+      transaction_id: newTransactionId,
       transaction_date: new Date(),
       member_id: memberId,
+      Name: sponsor_name,
+      mobileno: sponsor_mobileno,
       reference_no: payout_id.toString(),
       description: payout_type,
       transaction_type: "Level Benefits",
-      ew_credit: amount,
-      ew_debit: 0,
+      ew_credit: amount.toString(),
+      ew_debit: "0",
       status: "Completed",
       level: level,
       benefit_type: level === 1 ? "direct" : "indirect",
@@ -273,12 +281,13 @@ const createLevelBenefitsTransaction = async (transactionData) => {
       related_payout_id: payout_id
     });
 
-    await transaction.save();
+    await transaction.save({ session });
     
     // Add amount to sponsor's wallet balance
     await MemberModel.findOneAndUpdate(
       { Member_id: memberId },
-      { $inc: { wallet_balance: amount } }
+      { $inc: { wallet_balance: amount } },
+      { session }
     );
 
     return transaction;
@@ -452,7 +461,7 @@ const processMemberActivation = async (activatedMemberId) => {
  * @param {number} roiAmount - The ROI amount received
  * @returns {Promise<Array>} Results of commission distribution
  */
-const distributeROICommission = async (memberId, roiAmount) => {
+const distributeROICommission = async (memberId, roiAmount, session = null) => {
   try {
     if (!roiAmount || roiAmount <= 0) return [];
 
@@ -497,24 +506,23 @@ const distributeROICommission = async (memberId, roiAmount) => {
           sponsored_member_id: memberId,
           sponsor_id: upline.sponsor_id,
           status: "Completed",
+          Name: upline.sponsor_name,
+          mobileno: upline.sponsor_mobileno,
           description: `ROI Level ${upline.level} benefit (${percentage}%) from member ${memberId}'s ROI (₹${roiAmount})`,
           sponsor_status: upline.sponsor_status
         });
 
-        await payout.save();
+        await payout.save({ session });
 
-        // Create transaction record for wallet credit
-        const lastTransaction = await TransactionModel.findOne({}).sort({ createdAt: -1 });
-        let newTransactionId = 1;
-        if (lastTransaction && lastTransaction.transaction_id) {
-          const lastIdNumber = parseInt(String(lastTransaction.transaction_id).replace(/\D/g, ""), 10) || 0;
-          newTransactionId = lastIdNumber + 1;
-        }
+        // Fixed: Use unique transaction ID based on payoutId to skip slow DB reads
+        const newTransactionId = `T-ROI-L-${payoutId}-${Math.floor(Math.random() * 1000)}`;
 
         const transaction = new TransactionModel({
-          transaction_id: newTransactionId.toString(),
+          transaction_id: newTransactionId,
           transaction_date: today,
           member_id: upline.sponsor_id,
+          Name: upline.sponsor_name,
+          mobileno: upline.sponsor_mobileno,
           reference_no: payoutId.toString(),
           description: `ROI Level ${upline.level} Benefit`,
           transaction_type: "ROI Level Benefit",
@@ -527,12 +535,13 @@ const distributeROICommission = async (memberId, roiAmount) => {
           related_payout_id: payoutId
         });
 
-        await transaction.save();
+        await transaction.save({ session });
 
         // Add amount to sponsor's wallet balance
         await MemberModel.findOneAndUpdate(
           { Member_id: upline.sponsor_id },
-          { $inc: { wallet_balance: commissionAmount } }
+          { $inc: { wallet_balance: commissionAmount } },
+          { session }
         );
 
         results.push({
