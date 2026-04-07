@@ -6,7 +6,7 @@ const payoutSchema = new mongoose.Schema(
     date: { type: Date, default: Date.now },
     memberId: String,
     payout_type: String,
-    ref_no: String,
+    ref_no: { type: String, unique: true },
     amount: Number,
     count: Number,
     days: Number,

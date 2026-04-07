@@ -31,30 +31,51 @@ const getWorkingDaysInWindow = (startDate, calendarDays) => {
     return count;
 };
 
+// Lock management for global ROI processing
 let isROIProcessing = false;
+let lastGlobalProcessTime = 0;
+const GLOBAL_LOCK_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
 /**
  * Process daily ROI for all eligible members (Smart Catch-up)
  * Handles multi-day gaps automatically with production-grade safety.
+ * @param {string|null} targetMemberId - Optional ID to process only a specific member
  */
-const processDailyROI = async () => {
-    if (isROIProcessing) {
-        console.log("⚠️ [ROI] Process already running. Skipping concurrent trigger.");
-        return { success: false, message: "Process already running" };
+const processDailyROI = async (targetMemberId = null) => {
+    const currentTime = Date.now();
+    
+    // Global lock only applies if processing ALL members
+    if (!targetMemberId) {
+        if (isROIProcessing && (currentTime - lastGlobalProcessTime < GLOBAL_LOCK_TIMEOUT)) {
+            console.log("⚠️ [ROI] Global process already running. Skipping concurrent trigger.");
+            return { success: false, message: "Process already running" };
+        }
+        isROIProcessing = true;
+        lastGlobalProcessTime = currentTime;
     }
 
-    isROIProcessing = true;
     try {
-        // Fix: Use moment object for robust date comparison
-        const today = moment().startOf("day");
+        // ✅ Fix: Use Asia/Kolkata (+5:30) for "today" to match IST expectations
+        const today = moment().utcOffset("+05:30").startOf("day");
 
-        // Find all active members
-        const activeMembers = await MemberModel.find({
+        // Define filter for members
+        const memberFilter = {
             status: "active",
             roi_status: "Active"
-        });
+        };
+        if (targetMemberId) {
+            memberFilter.Member_id = targetMemberId;
+        }
 
-        console.log(`🚀 [ROI] [${today.format("YYYY-MM-DD")}] Starting Smart Processing for ${activeMembers.length} active members...`);
+        // Find eligible members
+        const activeMembers = await MemberModel.find(memberFilter);
+
+        if (targetMemberId && activeMembers.length === 0) {
+            console.log(`ℹ️ [ROI] Member ${targetMemberId} not found or not eligible for ROI.`);
+            return { success: true, message: "Member not eligible", processedCount: 0 };
+        }
+
+        console.log(`🚀 [ROI] [${today.format("YYYY-MM-DD")}] Starting ${targetMemberId ? `Targeted (${targetMemberId})` : "Global"} Processing for ${activeMembers.length} active members...`);
 
         let totalPayoutsProcessed = 0;
         let membersUpdatedCount = 0;
@@ -179,14 +200,17 @@ const processDailyROI = async () => {
         }
 
 
-        console.log(`✅ [ROI] Base Processing Complete. Total Payouts: ${totalPayoutsProcessed}.`);
-
         // =============================================
-        // PHASE 2: Process Active Add-On Packages (from add_on_package_tbl)
+        // PHASE 2: Process Active Add-On Packages
         // =============================================
-        const activeAddOns = await AddOnPackageModel.find({
+        const addonFilter = {
             roi_status: "Active"
-        });
+        };
+        if (targetMemberId) {
+            addonFilter.member_id = targetMemberId;
+        }
+
+        const activeAddOns = await AddOnPackageModel.find(addonFilter);
 
         console.log(`🚀 [ROI] Starting processing for ${activeAddOns.length} active Add-On packages...`);
 
@@ -314,11 +338,10 @@ const processDailyROI = async () => {
             processedCount: totalPayoutsProcessed + addonPayoutsProcessed // For legacy compatibility with cron.js log
         };
 
-    } catch (globalError) {
-        console.error("❌ Global Error in processDailyROI:", globalError);
-        throw globalError;
     } finally {
-        isROIProcessing = false;
+        if (!targetMemberId) {
+            isROIProcessing = false;
+        }
     }
 };
 

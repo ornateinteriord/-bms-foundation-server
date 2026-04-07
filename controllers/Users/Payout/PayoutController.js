@@ -786,6 +786,31 @@ const getROISummary = async (req, res) => {
 };
 
 
+const triggerUserROI = async (req, res) => {
+  try {
+    const { member_id } = req.params;
+    if (!member_id) {
+      return res.status(400).json({ success: false, message: "Member ID is required" });
+    }
+
+    console.log(`🎯 [ROI] Force Global Trigger by Member: ${member_id}`);
+    const result = await processDailyROI();
+
+    return res.status(200).json({
+      success: true,
+      message: "ROI check completed",
+      data: result
+    });
+  } catch (error) {
+    console.error("❌ Error in triggerUserROI:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error processing ROI",
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   triggerMLMCommissions,
   updateReferralHierarchy,
@@ -796,6 +821,7 @@ module.exports = {
   processRewardLoan,
   repaymentLoan,
   triggerDailyROI,
+  triggerUserROI,
   getROIBenefits,
   getROISummary,
 };
