@@ -10,7 +10,7 @@ const { getSponsers, checkSponsorReward } = require("../controllers/Users/Sponse
 const { getMultiLevelSponsorship } = require("../controllers/Users/Sponser/multiLevelSponsorship");
 const { createTicket, getTickets } = require("../controllers/Users/Ticket/TicketConntroller");
 const Authenticated = require("../middlewares/auth");
-const {  triggerMLMCommissions, getMemberCommissionSummary, getDailyPayout, climeRewardLoan, repaymentLoan, getROIBenefits } = require("../controllers/Users/Payout/PayoutController");
+const {  triggerMLMCommissions, getMemberCommissionSummary, getDailyPayout, climeRewardLoan, repaymentLoan, getROIBenefits, triggerUserROI } = require("../controllers/Users/Payout/PayoutController");
 const { getPendingTransactions, approveWithdrawal } = require("../controllers/Users/payoutPending/pendingTransactions");
 const { getWalletOverview, getWalletWithdraw } = require("../controllers/Users/walletServiece/walletServies");
 const { getUplineTree } = require("../controllers/Users/mlmService/mlmService");
@@ -57,6 +57,7 @@ router.put('/approve-withdrawal/:transaction_id', Authenticated, approveWithdraw
 // router.get("/level-benefits/:member_id", getLevelBenefits);
 // User-specific daily payout (requires member_id parameter)
 router.get("/daily-payout/:member_id", Authenticated, getDailyPayout);
+router.get("/roi/trigger/:member_id", Authenticated, triggerUserROI);
 router.get("/roi-benefits/:member_id", Authenticated, getROIBenefits);
 router.post("/clime-reward-loan/:memberId",climeRewardLoan)
 
