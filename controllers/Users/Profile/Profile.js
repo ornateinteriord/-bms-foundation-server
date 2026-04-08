@@ -2,6 +2,8 @@ const MemberModel = require("../../../models/Users/Member");
 const mongoose = require("mongoose");
 const moment = require("moment");
 const AdminModel = require("../../../models/Admin/Admin");
+const TransactionModel = require("../../../models/Transaction/Transaction");
+const PayoutModel = require("../../../models/Payout/Payout");
 const { triggerMLMCommissions } = require("../Payout/PayoutController");
 const { processMemberROI } = require("../roiService/roiService");
 
@@ -119,6 +121,7 @@ const activateMemberPackage = async (req, res) => {
       });
     }
 
+    const activationDate = moment().utcOffset("+05:30").format("YYYY-MM-DD");
     // Update member
     const updatedMember = await MemberModel.findOneAndUpdate(
       query,
@@ -129,7 +132,8 @@ const activateMemberPackage = async (req, res) => {
         roi_status: 'Active',
         roi_payout_count: 0,
         roi_payout_target: selectedPackage.value * 2,
-        roi_start_date: moment().format("YYYY-MM-DD"),
+        roi_start_date: activationDate,
+        roi_last_payout_date: activationDate,
       },
       { new: true }
     );
@@ -141,8 +145,38 @@ const activateMemberPackage = async (req, res) => {
       });
     }
 
-    // Trigger ROI Payout immediately if activated on a weekday
-    await processMemberROI(updatedMember);
+    // ✅ Create "Day 0" Payout for record keeping (₹0 amount)
+    const payoutId = Date.now() + Math.floor(Math.random() * 1000);
+    const payout = new PayoutModel({
+      payout_id: payoutId,
+      date: moment().utcOffset("+05:30").toDate(),
+      memberId: updatedMember.Member_id,
+      payout_type: "ROI",
+      ref_no: `ACT-${updatedMember.Member_id}-0`,
+      amount: 0,
+      count: 0,
+      days: 300,
+      status: "Approved",
+      description: "Package Activation"
+    });
+
+    // ✅ Create "Day 0" Transaction for record keeping (₹0 amount)
+    const activationTx = new TransactionModel({
+      transaction_id: `ACT-TX-${payoutId}`,
+      transaction_date: activationDate,
+      member_id: updatedMember.Member_id,
+      Name: updatedMember.Name,
+      mobileno: updatedMember.mobileno,
+      description: `Package Activation – Daily ROI (Day 0/300)`,
+      transaction_type: "ROI Payout",
+      ew_credit: "0",
+      ew_debit: "0",
+      status: "Completed",
+      benefit_type: "ROI",
+      reference_no: payout.ref_no
+    });
+    
+    await Promise.all([payout.save(), activationTx.save()]);
 
     // MLM activation only when status changes to active
     if (oldStatus !== "active" && updatedMember.status === "active") {
@@ -313,20 +347,52 @@ const updateMemberStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: "Member not found" });
     }
 
+    const activationDate = moment().utcOffset("+05:30").format("YYYY-MM-DD");
     const oldStatus = existingMember.status;
     const updatePayload = { status };
     if (oldStatus !== "active" && status === "active") {
         updatePayload.roi_status = 'Active';
         updatePayload.roi_payout_count = 0;
-        updatePayload.roi_start_date = moment().format("YYYY-MM-DD");
+        updatePayload.roi_start_date = activationDate;
+        updatePayload.roi_last_payout_date = activationDate;
         // If we have existing member's package value, we use it. Otherwise, initialize to 0 or handle separately.
         updatePayload.roi_payout_target = (existingMember.package_value || 0) * 2;
     }
 
     const updatedMember = await MemberModel.findOneAndUpdate(query, updatePayload, { new: true });
 
-    // Trigger ROI Payout immediately if activated on a weekday
-    await processMemberROI(updatedMember);
+    // ✅ Create "Day 0" Payout and Transaction if newly activated
+    if (oldStatus !== "active" && status === "active") {
+        const payoutId = Date.now() + Math.floor(Math.random() * 1000);
+        const payout = new PayoutModel({
+            payout_id: payoutId,
+            date: moment().utcOffset("+05:30").toDate(),
+            memberId: updatedMember.Member_id,
+            payout_type: "ROI",
+            ref_no: `ACT-${updatedMember.Member_id}-0`,
+            amount: 0,
+            count: 0,
+            days: 300,
+            status: "Approved",
+            description: "Package Activation"
+        });
+
+        const activationTx = new TransactionModel({
+            transaction_id: `ACT-TX-${payoutId}`,
+            transaction_date: activationDate,
+            member_id: updatedMember.Member_id,
+            Name: updatedMember.Name,
+            mobileno: updatedMember.mobileno,
+            description: `Package Activation – Daily ROI (Day 0/300)`,
+            transaction_type: "ROI Payout",
+            ew_credit: "0",
+            ew_debit: "0",
+            status: "Completed",
+            benefit_type: "ROI",
+            reference_no: payout.ref_no
+        });
+        await Promise.all([payout.save(), activationTx.save()]);
+    }
 
     // If status changed to active (from any status) trigger MLM commissions
     if (oldStatus !== "active" && status === "active") {
