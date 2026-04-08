@@ -5,6 +5,7 @@ const mlmService = require("../Users/mlmService/mlmService");
 const { processAddOnROI, processMemberROI } = require("../Users/roiService/roiService");
 const PayoutModel = require("../../models/Payout/Payout");
 const TransactionModel = require("../../models/Transaction/Transaction");
+const moment = require("moment");
 
 
 // User requests a new addon package layer
@@ -98,20 +99,51 @@ const evaluateRequest = async (req, res) => {
         member.spackage = `PKG-${request.requested_amount}`; // Generic tag
         member.status = "active";
         member.roi_status = "Active";
-        member.roi_start_date = new Date().toISOString().split('T')[0];
+        member.roi_start_date = moment().utcOffset("+05:30").format("YYYY-MM-DD");
+        member.roi_last_payout_date = member.roi_start_date; 
         member.roi_payout_target = request.requested_amount * 2;
         member.roi_payout_count = 0;
 
         await member.save();
 
-        // Trigger immediate first ROI payout for Primary Package
-        await processMemberROI(member);
+        // ✅ Create "Day 0" Payout for (₹0 amount)
+        const payoutId = Date.now() + Math.floor(Math.random() * 1000);
+        const payout = new PayoutModel({
+          payout_id: payoutId,
+          date: moment().utcOffset("+05:30").toDate(),
+          memberId: member.Member_id,
+          payout_type: "ROI",
+          ref_no: `ACT-${member.Member_id}-0`,
+          amount: 0,
+          count: 0,
+          days: 300,
+          status: "Approved",
+          description: "Package Activation"
+        });
+
+        // ✅ Create "Day 0" Transaction for record keeping (₹0 amount)
+        const activationTx = new TransactionModel({
+          transaction_id: `ACT-TX-${payoutId}`,
+          transaction_date: member.roi_last_payout_date,
+          member_id: member.Member_id,
+          Name: member.Name,
+          mobileno: member.mobileno,
+          description: `Package Activation – Daily ROI (Day 0/300)`,
+          transaction_type: "ROI Payout",
+          ew_credit: "0",
+          ew_debit: "0",
+          status: "Completed",
+          benefit_type: "ROI",
+          reference_no: payout.ref_no
+        });
+        await Promise.all([payout.save(), activationTx.save()]);
       } 
       // ✅ CASE B: Add-On Package (Subsequent Packages)
       else {
         console.log(`📦 [Package] Add-on package detected for ${member.Member_id}. Storing in add_on_package_tbl.`);
 
         // 1. Create the new AddOnPackage record
+        const activationDate = moment().utcOffset("+05:30").format("YYYY-MM-DD");
         const newAddOn = new AddOnPackageModel({
           package_id: `PKG-A-${Date.now()}`,
           member_id: request.member_id,
@@ -119,15 +151,44 @@ const evaluateRequest = async (req, res) => {
           roi_status: "Active",
           roi_payout_target: request.requested_amount * 2,
           roi_payout_count: 0,
-          roi_start_date: new Date().toISOString().split('T')[0],
+          roi_start_date: activationDate,
+          roi_last_payout_date: activationDate, 
           request_id: request.request_id,
           admin_id: admin_id || "SYSTEM"
         });
 
         await newAddOn.save();
 
-        // 2. Trigger immediate first ROI payout for this Add-On
-        await processAddOnROI(newAddOn, member);
+        // ✅ Create "Day 0" Payout and Transaction (₹0 amount)
+        const payoutId = Date.now() + Math.floor(Math.random() * 1000);
+        const payout = new PayoutModel({
+          payout_id: payoutId,
+          date: moment().utcOffset("+05:30").toDate(),
+          memberId: request.member_id,
+          payout_type: "ROI",
+          ref_no: `ACT-A-${newAddOn.package_id}-0`,
+          amount: 0,
+          count: 0,
+          days: 300,
+          status: "Approved",
+          description: "Add-On Activation"
+        });
+
+        const addonActivationTx = new TransactionModel({
+          transaction_id: `ACT-A-TX-${payoutId}`,
+          transaction_date: activationDate,
+          member_id: request.member_id,
+          Name: member.Name,
+          mobileno: member.mobileno,
+          description: `Add-On Activation – Day 0/300 (₹${request.requested_amount} pkg)`,
+          transaction_type: "ROI Payout",
+          ew_credit: "0",
+          ew_debit: "0",
+          status: "Completed",
+          benefit_type: "ROI",
+          reference_no: payout.ref_no
+        });
+        await Promise.all([payout.save(), addonActivationTx.save()]);
       }
 
       // ✅ Trigger MLM level commissions for the Package amount (same for both Primary/Add-On)
