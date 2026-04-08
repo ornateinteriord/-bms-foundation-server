@@ -11,7 +11,7 @@ const mongoose = require("mongoose");
  * Check if the given date is a weekend (Saturday or Sunday)
  */
 const isWeekend = (date) => {
-    const day = moment(date).day();
+    const day = moment(date).utcOffset("+05:30").day();
     return day === 0 || day === 6; // 0 = Sunday, 6 = Saturday
 };
 
@@ -99,8 +99,8 @@ const processDailyROI = async (targetMemberId = null) => {
                     console.log(`🔒 [ROI] Freezing base roi_payout_target for ${member.Member_id}: ₹${member.roi_payout_target} (base: ₹${originalBaseAmount}, addons: ₹${totalAddOnAmount})`);
                 }
 
-                let startRefDate = member.roi_last_payout_date || member.roi_start_date || moment(member.createdAt).format("YYYY-MM-DD");
-                let currentDayPtr = moment(startRefDate).startOf("day").add(1, "days");
+                let startRefDate = member.roi_last_payout_date || member.roi_start_date || moment(member.createdAt).utcOffset("+05:30").format("YYYY-MM-DD");
+                let currentDayPtr = moment(startRefDate).utcOffset("+05:30").startOf("day").add(1, "days");
 
                 let memberPayoutsThisRun = 0;
                 const originalTotalCount = member.roi_payout_count || 0;
@@ -225,8 +225,8 @@ const processDailyROI = async (targetMemberId = null) => {
             session.startTransaction();
 
             try {
-                let startRefDate = addon.roi_last_payout_date || addon.roi_start_date || moment(addon.createdAt).format("YYYY-MM-DD");
-                let currentDayPtr = moment(startRefDate).startOf("day").add(1, "days");
+                let startRefDate = addon.roi_last_payout_date || addon.roi_start_date || moment(addon.createdAt).utcOffset("+05:30").format("YYYY-MM-DD");
+                let currentDayPtr = moment(startRefDate).utcOffset("+05:30").startOf("day").add(1, "days");
 
                 let addonPayoutsThisRun = 0;
                 let lastAddonDailyAmt = 0;
@@ -354,7 +354,7 @@ const processMemberROI = async (member) => {
     session.startTransaction();
 
     try {
-        const todayStr = moment().format("YYYY-MM-DD");
+        const todayStr = moment().utcOffset("+05:30").format("YYYY-MM-DD");
 
         if (isWeekend(todayStr)) {
             await session.abortTransaction();
@@ -417,7 +417,7 @@ const processAddOnROI = async (addon, member) => {
     session.startTransaction();
 
     try {
-        const todayStr = moment().format("YYYY-MM-DD");
+        const todayStr = moment().utcOffset("+05:30").format("YYYY-MM-DD");
 
         if (isWeekend(todayStr)) {
             await session.abortTransaction();
