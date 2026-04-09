@@ -99,6 +99,17 @@ const processDailyROI = async (targetMemberId = null) => {
                     console.log(`🔒 [ROI] Freezing base roi_payout_target for ${member.Member_id}: ₹${member.roi_payout_target} (base: ₹${originalBaseAmount}, addons: ₹${totalAddOnAmount})`);
                 }
 
+                // Skip if already completed
+                if (member.roi_status === "Completed" || (member.roi_payout_count || 0) >= 300) {
+                    if (member.roi_status !== "Completed") {
+                        member.roi_status = "Completed";
+                        await member.save({ session });
+                    }
+                    await session.commitTransaction();
+                    session.endSession();
+                    continue;
+                }
+
                 let startRefDate = member.roi_last_payout_date || member.roi_start_date || moment(member.createdAt).utcOffset("+05:30").format("YYYY-MM-DD");
                 let currentDayPtr = moment(startRefDate).utcOffset("+05:30").startOf("day").add(1, "days");
 
@@ -225,6 +236,17 @@ const processDailyROI = async (targetMemberId = null) => {
             session.startTransaction();
 
             try {
+                // Skip if already completed
+                if (addon.roi_status === "Completed" || (addon.roi_payout_count || 0) >= 300) {
+                    if (addon.roi_status !== "Completed") {
+                        addon.roi_status = "Completed";
+                        await addon.save({ session });
+                    }
+                    await session.commitTransaction();
+                    session.endSession();
+                    continue;
+                }
+
                 let startRefDate = addon.roi_last_payout_date || addon.roi_start_date || moment(addon.createdAt).utcOffset("+05:30").format("YYYY-MM-DD");
                 let currentDayPtr = moment(startRefDate).utcOffset("+05:30").startOf("day").add(1, "days");
 

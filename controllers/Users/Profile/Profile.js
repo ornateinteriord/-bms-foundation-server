@@ -97,6 +97,22 @@ const activateMemberPackage = async (req, res) => {
     }
 
     const oldStatus = existingMember.status;
+    
+    // Prevent resetting ROI if already active
+    if (oldStatus === 'active' || existingMember.roi_status === 'Active') {
+      return res.status(400).json({
+        success: false,
+        message: "Member already has an active package. Please use Add-on packages for further upgrades."
+      });
+    }
+
+    // Prevent activating if already completed 300 days
+    if (existingMember.roi_status === 'Completed' || (existingMember.roi_payout_count || 0) >= 300) {
+      return res.status(400).json({
+        success: false,
+        message: "This member has already completed their 300-day ROI cycle."
+      });
+    }
 
     // Old packages (commented out — no longer in use)
     // const packages = {
@@ -349,6 +365,25 @@ const updateMemberStatus = async (req, res) => {
 
     const activationDate = moment().utcOffset("+05:30").format("YYYY-MM-DD");
     const oldStatus = existingMember.status;
+
+    // Safety checks for status update
+    if (status === 'active') {
+        if (oldStatus === 'active' || existingMember.roi_status === 'Active') {
+            // If already active, don't update ROI fields, just update other fields if any
+            // For now, we return error to prevent accidental duplicate activation logic
+            return res.status(400).json({ 
+                success: false, 
+                message: "Member is already active. No changes made." 
+            });
+        }
+        if (existingMember.roi_status === 'Completed') {
+            return res.status(400).json({ 
+                success: false, 
+                message: "ROI cycle already completed for this member." 
+            });
+        }
+    }
+
     const updatePayload = { status };
     if (oldStatus !== "active" && status === "active") {
         updatePayload.roi_status = 'Active';
