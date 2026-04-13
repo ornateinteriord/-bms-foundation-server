@@ -9,8 +9,8 @@ const { generateMSCSEmail } = require("../../utils/generateMSCSEmail");
 const { updateSponsorReferrals } = require("../../controllers/Users/mlmService/mlmService");
 const path = require("path");
 
-const recoverySubject = "MSI - Password Recovery";
-const resetPasswordSubject = "MSI - OTP Verification";
+const recoverySubject = "BMS Foundation - Password Recovery";
+const resetPasswordSubject = "BMS Foundation - OTP Verification";
 
 const generateUniqueMemberId = async () => {
   let newNumber = 1;
@@ -84,7 +84,7 @@ const signup = async (req, res) => {
 
       const { welcomeMessage, welcomeSubject } = generateMSCSEmail(memberId, password, Name);
 
-      const textContent = `Dear ${Name}, Your account registration with MSI has been completed. Member ID: ${memberId}, Password: ${password}. Your account is under verification process.`;
+      const textContent = `Dear ${Name}, Your account registration with BMS Foundation has been completed. Member ID: ${memberId}, Password: ${password}. Your account is under verification process.`;
 
 
       await sendMail(email, welcomeSubject, welcomeMessage, textContent);
@@ -144,7 +144,7 @@ You requested a password recovery. Here is your password:
 
 Please keep this information secure.
 
-Best regards,\MSI Team`;
+Best regards,\nBMS Foundation Team`;
 
     await sendMail(user.email, recoverySubject, recoveryDescription);
     res.json({ success: true, message: "Password sent to your email" });
@@ -194,12 +194,12 @@ const resetPassword = async (req, res) => {
     }
     const newOtp = generateOTP();
 
-    const textContent = `Dear Member,\n\nYour OTP for password reset is: ${newOtp}\n\nPlease use this OTP to proceed with resetting your password.\n\nPlease don't share this OTP with anyone.\n\nBest regards,\nMSI Team`;
+    const textContent = `Dear Member,\n\nYour OTP for password reset is: ${newOtp}\n\nPlease use this OTP to proceed with resetting your password.\n\nPlease don't share this OTP with anyone.\n\nBest regards,\nBMS Foundation Team`;
 
     const htmlContent = `
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
       <div style="text-align: center; margin-bottom: 30px;">
-        <img src="cid:bmslogo" alt="MSI Logo" style="max-width: 180px; height: auto;" />
+        <img src="cid:bmslogo" alt="BMS Foundation Logo" style="max-width: 180px; height: auto;" />
       </div>
       <div style="background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
         <h2 style="color: #0f172a; margin-top: 0; text-align: center; font-size: 24px;">Password Reset Request</h2>
@@ -213,7 +213,7 @@ const resetPassword = async (req, res) => {
         <p style="color: #475569; font-size: 14px; line-height: 1.6; margin-bottom: 10px;"><strong>Security Notice:</strong> Please do not share this code with anyone. This OTP is valid for a limited time.</p>
       </div>
       <div style="text-align: center; margin-top: 25px; color: #94a3b8; font-size: 12px;">
-        &copy; ${new Date().getFullYear()} MSI Foundation. All rights reserved.
+        &copy; ${new Date().getFullYear()} BMS Foundation. All rights reserved.
       </div>
     </div>`;
 
