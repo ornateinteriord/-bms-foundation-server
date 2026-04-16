@@ -26,6 +26,7 @@ const TransactionSchema = new mongoose.Schema(
 
     level: { type: Number },
     related_member_id: { type: String },
+    related_member_name: { type: String },
     related_payout_id: { type: String },
     reference_no: { type: String },
 
