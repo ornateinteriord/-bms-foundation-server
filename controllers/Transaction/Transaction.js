@@ -19,7 +19,33 @@ const getTransactionDetails = async (req, res) => {
       query.status = status;
     }
 
-    const transactions = await TransactionModel.find(query);
+    const transactions = await TransactionModel.aggregate([
+      { $match: query },
+      {
+        $lookup: {
+          from: "member_tbl",
+          localField: "related_member_id",
+          foreignField: "Member_id",
+          as: "related_member"
+        }
+      },
+      {
+        $addFields: {
+          related_member_name: {
+            $ifNull: [
+              "$related_member_name",
+              { $arrayElemAt: ["$related_member.Name", 0] }
+            ]
+          }
+        }
+      },
+      {
+        $project: {
+          related_member: 0
+        }
+      },
+      { $sort: { createdAt: -1 } } // Sort by date descending
+    ]);
 
     if (!transactions.length) {
       return res.status(200).json({ 

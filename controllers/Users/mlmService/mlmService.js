@@ -152,6 +152,7 @@ const calculateCommissions = async (newMemberId, directSponsorId, specificAmount
             sponsor_mobileno: upline.sponsor_mobileno,
             sponsored_member_id: upline.sponsored_member_id,
             new_member_id: newMemberId,
+            new_member_name: newMember.Name,
             amount: commissionAmount,
             payout_type: `${getOrdinal(upline.level)} Level Benefits (${pkgType})`,
             description: `Level ${upline.level} commission (${percentage}%) from member ${newMemberId}'s ${pkgType} package (₹${packageValue})`,
@@ -228,6 +229,7 @@ const processCommissions = async (commissions, session = null) => {
           amount: commission.amount,
           level: commission.level,
           new_member_id: commission.new_member_id,
+          new_member_name: commission.new_member_name,
           sponsor_name: sponsor.Name,
           sponsor_mobileno: sponsor.mobileno
         }, session);
@@ -257,7 +259,7 @@ const processCommissions = async (commissions, session = null) => {
 
 const createLevelBenefitsTransaction = async (transactionData, session = null) => {
   try {
-    const { payout_id, memberId, payout_type, amount, level, new_member_id, sponsor_name, sponsor_mobileno } = transactionData;
+    const { payout_id, memberId, payout_type, amount, level, new_member_id, new_member_name, sponsor_name, sponsor_mobileno } = transactionData;
 
     // Fixed: Performance optimization - don't query for last ID on every iteration
     // Use a unique compound ID to ensure consistency and speed in high-concurrency 
@@ -278,6 +280,7 @@ const createLevelBenefitsTransaction = async (transactionData, session = null) =
       level: level,
       benefit_type: level === 1 ? "direct" : "indirect",
       related_member_id: new_member_id,
+      related_member_name: new_member_name,
       related_payout_id: payout_id
     });
 
@@ -465,6 +468,10 @@ const distributeROICommission = async (memberId, roiAmount, session = null) => {
   try {
     if (!roiAmount || roiAmount <= 0) return [];
 
+    // Find the source member to get their name
+    const sourceMember = await MemberModel.findOne({ Member_id: memberId }).session(session);
+    if (!sourceMember) return [];
+
     // Find all upline sponsors up to 10 levels
     const uplineSponsors = await findUplineSponsors(memberId, 10);
     if (uplineSponsors.length === 0) return [];
@@ -532,6 +539,7 @@ const distributeROICommission = async (memberId, roiAmount, session = null) => {
           level: upline.level,
           benefit_type: "ROI Level Income",
           related_member_id: memberId,
+          related_member_name: sourceMember.Name,
           related_payout_id: payoutId
         });
 

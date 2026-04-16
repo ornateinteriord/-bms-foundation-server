@@ -15,6 +15,7 @@ const PaymentRoutes = require("./routes/PaymentRoutes");
 const KYCRoutes = require("./routes/KYCRoutes");
 const CronRoutes = require("./routes/CronRoutes");
 const AddOnPackageRoutes = require("./routes/AddOnPackageRoutes");
+const ChatRoutes = require("./routes/ChatRoutes");
 
 
 
@@ -68,6 +69,46 @@ const io = new Server(server, {
     credentials: true
   }
 });
+
+const activeUsers = new Map();
+app.set("io", io);
+app.set("activeUsers", activeUsers);
+
+io.on("connection", (socket) => {
+  console.log("🟢 User connected to WebSocket:", socket.id);
+
+  const userId = socket.handshake.query?.userId;
+  if (userId && userId !== "undefined") {
+    if (!activeUsers.has(userId)) {
+      activeUsers.set(userId, new Set());
+    }
+    activeUsers.get(userId).add(socket.id);
+  }
+
+  socket.on("joinRoom", ({ roomId }) => {
+    socket.join(roomId);
+    console.log(`📡 Socket ${socket.id} joined room ${roomId}`);
+  });
+
+  socket.on("typing", ({ roomId, isTyping }) => {
+    socket.to(roomId).emit("userTyping", { userId: socket.id, isTyping });
+  });
+
+  socket.on("markAsRead", ({ roomId, messageIds }) => {
+    socket.to(roomId).emit("messagesRead", { messageIds });
+  });
+
+  socket.on("disconnect", () => {
+    console.log("🔴 User disconnected from WebSocket:", socket.id);
+    if (userId && activeUsers.has(userId)) {
+      activeUsers.get(userId).delete(socket.id);
+      if (activeUsers.get(userId).size === 0) {
+        activeUsers.delete(userId);
+      }
+    }
+  });
+});
+
 
 // ======================================================
 //        🛡️ CORS CONFIG (Supports Vite + ngrok)
@@ -170,6 +211,7 @@ app.use("/payments", PaymentRoutes);
 app.use("/kyc", KYCRoutes);
 app.use("/api/cron", CronRoutes);
 app.use("/api/packages/addon", AddOnPackageRoutes);
+app.use("/chat", ChatRoutes);
 
 
 

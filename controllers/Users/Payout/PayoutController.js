@@ -712,11 +712,39 @@ const getROIBenefits = async (req, res) => {
       query = { member_id: member_id };
     }
 
-    // Filter strictly for ROI Level Benefits
-    const transactions = await TransactionModel.find({
-      ...query,
-      transaction_type: "ROI Level Benefit",
-    }).sort({ transaction_date: -1 });
+    // Filter strictly for ROI Level Benefits with related member name population
+    const transactions = await TransactionModel.aggregate([
+      { 
+        $match: {
+          ...query,
+          transaction_type: "ROI Level Benefit",
+        }
+      },
+      {
+        $lookup: {
+          from: "member_tbl",
+          localField: "related_member_id",
+          foreignField: "Member_id",
+          as: "related_member"
+        }
+      },
+      {
+        $addFields: {
+          related_member_name: {
+            $ifNull: [
+              "$related_member_name",
+              { $arrayElemAt: ["$related_member.Name", 0] }
+            ]
+          }
+        }
+      },
+      {
+        $project: {
+          related_member: 0
+        }
+      },
+      { $sort: { transaction_date: -1, createdAt: -1 } }
+    ]);
 
     return res.status(200).json({
       success: true,
