@@ -1,5 +1,6 @@
 const TransactionModel = require("../../../models/Transaction/Transaction");
 const MemberModel = require("../../../models/Users/Member");
+const AddOnRequestModel = require("../../../models/Packages/AddOnRequest");
 
 const getWalletOverview = async (req, res) => {
   try {
@@ -102,6 +103,9 @@ const getWalletOverview = async (req, res) => {
     const totalLoanDebits = loanTransactions.reduce((acc, tx) => acc + (parseFloat(tx.ew_debit) || 0), 0);
     const netLoanBalance = totalLoanCredits - totalLoanDebits;
 
+    const addonRequests = await AddOnRequestModel.find({ member_id: memberId, status: "APPROVED" });
+    const totalAddonAmount = addonRequests.reduce((acc, req) => acc + (req.requested_amount || 0), 0);
+
     return res.status(200).json({
       success: true,
       data: {
@@ -119,6 +123,9 @@ const getWalletOverview = async (req, res) => {
         roiBenefits: roiBenefits.toFixed(2),
         totalBenefits: (levelBenefits + roiLevelBenefits + directBenefits + repaymentCommission + roiBenefits).toFixed(2),
         pendingWithdrawals: pendingWithdrawals.toFixed(2),
+        primaryPackage: member.package_value || 0,
+        addOnPackages: totalAddonAmount,
+        totalPackages: (member.package_value || 0) + totalAddonAmount,
         // Loan information (for transparency)
         loanInfo: {
           totalLoanAmount: totalLoanCredits.toFixed(2),
