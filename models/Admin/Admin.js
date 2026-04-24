@@ -7,9 +7,15 @@ const AdminSchema = new mongoose.Schema(
     PASSWORD: { type: String, required: true },
     role: { type: String, required: true },
     STATUS: { type: String, required: true },
+
+    // NIDHI SPECIFIC FIELDS
+    password: { type: String }, // Lowercase mapping for Nidhi
+    status: { type: String, default: 'active' }, // Lowercase mapping
+    reference_id: { type: String, default: null },
+    branch_code: { type: String, default: null }
   },
   {timestamps: true, collection: "admin_tbl" }
 );
 
-const AdminModel = mongoose.model("admin_tbl", AdminSchema);
+const AdminModel = mongoose.models.admin_tbl || mongoose.model("admin_tbl", AdminSchema);
 module.exports = AdminModel;

@@ -17,12 +17,22 @@ const CronRoutes = require("./routes/CronRoutes");
 const AddOnPackageRoutes = require("./routes/AddOnPackageRoutes");
 const ChatRoutes = require("./routes/ChatRoutes");
 
+// NIDHI SPECIFIC ROUTES
+const AgentRoutes = require("./routes/AgentRoute");
+const NidhiMemberRoutes = require("./routes/NidhiMemberRoute");
+const NidhiTransactionRoutes = require("./routes/NidhiTransactionRoute");
+const ReceiptsRoutes = require("./routes/ReceiptsRoute");
+const PaymentsRoutes = require("./routes/PaymentsRoute");
+const CashTransactionRoutes = require("./routes/CashTransactionRoute");
+const DebugRoutes = require("./routes/DebugRoute");
+
 
 
 // 🔐 CASHFREE WEBHOOK CONTROLLER
 const { handleWebhook } = require("./controllers/Payments/CashfreeController");
 const connectDB = require("./models/db");
 const { initCronJobs } = require("./cron/cron");
+const { startMaturityScheduler } = require("./utils/maturityScheduler");
 
 
 const app = express();
@@ -213,6 +223,15 @@ app.use("/api/cron", CronRoutes);
 app.use("/api/packages/addon", AddOnPackageRoutes);
 app.use("/chat", ChatRoutes);
 
+// NIDHI API MOUNTS
+app.use("/agent", AgentRoutes);
+app.use("/member", NidhiMemberRoutes);
+app.use("/transaction", NidhiTransactionRoutes);
+app.use("/banking", ReceiptsRoutes);
+app.use("/banking", PaymentsRoutes);
+app.use("/banking/cash-transactions", CashTransactionRoutes);
+app.use("/debug", DebugRoutes);
+
 
 
 // ======================================================
@@ -236,9 +255,11 @@ const startServer = async () => {
       console.log(`🌍 Server running on port ${PORT}`);
       console.log("🔔 Cashfree webhook ready");
       console.log("💬 WebSocket server ready");
+      
       // Initialize Cron Jobs (Only for Local/VPS, Vercel uses Crons field)
       if (process.env.VERCEL !== "1") {
           initCronJobs();
+          startMaturityScheduler();
       }
     });
 
