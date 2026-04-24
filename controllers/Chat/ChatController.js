@@ -146,8 +146,29 @@ const sendMessage = async (req, res) => {
 
         let displayText = text?.trim() || (messageType === "image" ? "📷 Image" : messageType === "file" ? "📎 File" : "");
 
-        const chatRoom = await ChatRoomModel.findOne({ roomId });
-        if (!chatRoom) return res.status(404).json({ success: false, message: "Chat room not found" });
+        let chatRoom = await ChatRoomModel.findOne({ roomId });
+        if (!chatRoom) {
+            // Auto-create room if it's a valid P2P room ID (sorted_ids)
+            const parts = roomId.split('_');
+            if (parts.length === 2) {
+                const participants = parts.sort();
+                const member1 = await MemberModel.findOne({ Member_id: participants[0] });
+                const member2 = await MemberModel.findOne({ Member_id: participants[1] });
+                
+                chatRoom = new ChatRoomModel({
+                    roomId,
+                    participants,
+                    participantDetails: [
+                        { memberId: participants[0], name: member1?.Name || "User 1", role: member1?.role || "USER", profileImage: member1?.profile_image || "" },
+                        { memberId: participants[1], name: member2?.Name || "User 2", role: member2?.role || "USER", profileImage: member2?.profile_image || "" },
+                    ],
+                    unreadCount: new Map(),
+                });
+                await chatRoom.save();
+            } else {
+                return res.status(404).json({ success: false, message: "Chat room not found" });
+            }
+        }
 
         chatRoom.lastMessage = displayText.substring(0, 100);
         chatRoom.lastMessageTime = new Date();

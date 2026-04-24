@@ -78,10 +78,35 @@ const MemberSchema = new mongoose.Schema(
       enum: ["NOT_CREATED", "FAILED", "CREATED"],
       default: "NOT_CREATED"
     },
-    wallet_balance: { type: Number, default: 0 }
+    wallet_balance: { type: Number, default: 0 },
+
+    // NIDHI SPECIFIC FIELDS (Lowercase mappings)
+    member_id: { type: String }, // Counterpart to Member_id
+    branch_id: { type: String, default: null },
+    receipt_no: { type: String, default: null },
+    name: { type: String, default: null }, // Counterpart to Name
+    father_name: { type: String, default: null }, // Counterpart to Father_name
+    age: { type: Number, default: null },
+    emailid: { type: String, default: null }, // Counterpart to email
+    contactno: { type: String, default: null }, // Counterpart to mobileno
+    pan_no: { type: String, default: null }, // Counterpart to Pan_no
+    aadharcard_no: { type: String, default: null }, 
+    voter_id: { type: String, default: null },
+    nominee: { type: String, default: null }, // Counterpart to Nominee_name
+    relation: { type: String, default: null }, // Counterpart to Nominee_Relation
+    occupation: { type: String, default: null },
+    introducer: { type: String, default: null }, // Nidhi hierarchy seed
+    introducer_name: { type: String, default: null },
+    commission_eligible: { type: Boolean, default: true },
+    commission_balance: { type: Number, default: 0 },
+    introducer_hierarchy: { type: [String], default: [] },
+    member_image: { type: String, default: null },
+    member_signature: { type: String, default: null },
+    entered_by: { type: String, default: null },
+    role: { type: String, default: "USER" }
   },
   { timestamps: true, collection: "member_tbl" }
 );
 
-const MemberModel = mongoose.model("member_tbl", MemberSchema);
+const MemberModel = mongoose.models.member_tbl || mongoose.model("member_tbl", MemberSchema);
 module.exports = MemberModel;

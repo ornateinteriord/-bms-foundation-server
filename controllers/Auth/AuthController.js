@@ -243,9 +243,7 @@ const login = async (req, res) => {
         .status(404)
         .json({ success: false, message: "User or Admin not found" });
     }
-
-    const userRole = user instanceof MemberModel ? "USER" : "ADMIN";
-
+    const userRole = user instanceof MemberModel ? "USER" : (admin.role || "ADMIN");
     const isPasswordValid =
       password === (foundUser.PASSWORD || foundUser.password);
     if (!isPasswordValid) {
