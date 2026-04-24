@@ -33,11 +33,18 @@ const getMessages = async (req, res) => {
         const limit = parseInt(req.query.limit) || 50;
         const skip = parseInt(req.query.skip) || 0;
 
-        const room = userRole === "ADMIN"
+        let room = userRole === "ADMIN"
             ? await ChatRoomModel.findOne({ roomId, participants: { $regex: /^ADMIN_/ } })
             : await ChatRoomModel.findOne({ roomId, participants: userId });
 
-        if (!room) return res.status(403).json({ success: false, message: "Access denied to this chat room" });
+        if (!room) {
+            // Check if it's a virtual room ID for the user
+            const participants = roomId.split('_');
+            if (participants.includes(userId)) {
+                return res.status(200).json({ success: true, data: [] });
+            }
+            return res.status(403).json({ success: false, message: "Access denied to this chat room" });
+        }
 
         const messages = await MessageModel.find({ roomId }).sort({ createdAt: 1 }).skip(skip).limit(limit).lean();
         res.status(200).json({ success: true, data: messages });
@@ -53,11 +60,17 @@ const markAsRead = async (req, res) => {
         const userId = req.user.memberId || req.user.Member_id || req.user.id;
         const userRole = req.user.role;
 
-        const room = userRole === "ADMIN"
+        let room = userRole === "ADMIN"
             ? await ChatRoomModel.findOne({ roomId, participants: { $regex: /^ADMIN_/ } })
             : await ChatRoomModel.findOne({ roomId, participants: userId });
 
-        if (!room) return res.status(403).json({ success: false, message: "Access denied" });
+        if (!room) {
+            const participants = roomId.split('_');
+            if (participants.includes(userId)) {
+                return res.status(200).json({ success: true, message: "No room to mark as read" });
+            }
+            return res.status(403).json({ success: false, message: "Access denied" });
+        }
 
         if (userRole === "ADMIN") {
             await MessageModel.updateMany({ roomId, recipientId: { $regex: /^ADMIN_/ }, isRead: false }, { $set: { isRead: true } });
