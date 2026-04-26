@@ -57,6 +57,61 @@ const processDailyROI = async (targetMemberId = null) => {
     try {
         // ✅ Fix: Use Asia/Kolkata (+5:30) for "today" to match IST expectations
         const today = moment().utcOffset("+05:30").startOf("day");
+        const todayStr = today.format("YYYY-MM-DD");
+
+        // --- EMERGENCY REPAIR BLOCK FOR APRIL 24th ---
+        // This will fix misdated records and add missing ones automatically
+        if (!targetMemberId) {
+            try {
+                console.log("🛠️ [ROI] Running Emergency Repair for April 24th Benefits...");
+                const date24 = "2026-04-24";
+                const payouts24 = await TransactionModel.find({
+                    transaction_date: date24,
+                    transaction_type: "ROI Payout"
+                });
+
+                let fixedCount = 0;
+                let addedCount = 0;
+
+                for (const payout of payouts24) {
+                    // 1. Fix misdated benefits (sent to today instead of 24th)
+                    const misdated = await TransactionModel.find({
+                        related_member_id: payout.member_id,
+                        transaction_type: "ROI Level Benefit",
+                        transaction_date: todayStr
+                    });
+                    
+                    if (misdated.length > 0) {
+                        for (const b of misdated) {
+                            b.transaction_date = date24;
+                            await b.save();
+                            await PayoutModel.updateMany(
+                                { payout_id: Number(b.reference_no), memberId: b.member_id },
+                                { date: new Date(date24) }
+                            );
+                            fixedCount++;
+                        }
+                    }
+
+                    // 2. Add missing benefits
+                    const existsOnTargetDate = await TransactionModel.exists({
+                        related_member_id: payout.member_id,
+                        transaction_type: "ROI Level Benefit",
+                        transaction_date: date24
+                    });
+
+                    if (!existsOnTargetDate) {
+                        await mlmService.distributeROICommission(payout.member_id, parseFloat(payout.ew_credit), null, date24);
+                        addedCount++;
+                    }
+                }
+                if (fixedCount > 0 || addedCount > 0) {
+                    console.log(`✅ [ROI] Emergency Repair completed: Fixed ${fixedCount}, Added ${addedCount} benefits.`);
+                }
+            } catch (err) {
+                console.error("❌ [ROI] Emergency Repair failed:", err.message);
+            }
+        }
 
         // Define filter for members
         const memberFilter = {
@@ -163,7 +218,7 @@ const processDailyROI = async (targetMemberId = null) => {
                                 });
 
                                 // Distribute Level Commissions (MLM) - NOW ATOMIC (inside session)
-                                await mlmService.distributeROICommission(member.Member_id, dailyPayoutAmount, session);
+                                await mlmService.distributeROICommission(member.Member_id, dailyPayoutAmount, session, processingDateStr);
 
                                 await payout.save({ session });
                                 await transaction.save({ session });
@@ -301,7 +356,7 @@ const processDailyROI = async (targetMemberId = null) => {
                                 });
 
                                 // Distribute MLM commission for this add-on's daily ROI - NOW ATOMIC
-                                await mlmService.distributeROICommission(addon.member_id, dailyPayoutAmount, session);
+                                await mlmService.distributeROICommission(addon.member_id, dailyPayoutAmount, session, processingDateStr);
 
                                 await payout.save({ session });
                                 await transaction.save({ session });
@@ -415,7 +470,7 @@ const processMemberROI = async (member) => {
         await Promise.all([payout.save({ session }), transaction.save({ session }), member.save({ session })]);
         
         // Distribute Level Commissions (MLM) - NOW ATOMIC
-        await mlmService.distributeROICommission(member.Member_id, dailyAmt, session);
+        await mlmService.distributeROICommission(member.Member_id, dailyAmt, session, todayStr);
         
         await session.commitTransaction();
 
@@ -510,7 +565,7 @@ const processAddOnROI = async (addon, member) => {
         await Promise.all([payout.save({ session }), transaction.save({ session }), addon.save({ session })]);
 
         // Distribute MLM commission for this add-on's daily ROI - NOW ATOMIC
-        await mlmService.distributeROICommission(addon.member_id, dailyAmt, session);
+        await mlmService.distributeROICommission(addon.member_id, dailyAmt, session, todayStr);
 
         await session.commitTransaction();
 

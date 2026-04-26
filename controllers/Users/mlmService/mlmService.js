@@ -464,7 +464,7 @@ const processMemberActivation = async (activatedMemberId) => {
  * @param {number} roiAmount - The ROI amount received
  * @returns {Promise<Array>} Results of commission distribution
  */
-const distributeROICommission = async (memberId, roiAmount, session = null) => {
+const distributeROICommission = async (memberId, roiAmount, session = null, customDate = null) => {
   try {
     if (!roiAmount || roiAmount <= 0) return [];
 
@@ -499,7 +499,7 @@ const distributeROICommission = async (memberId, roiAmount, session = null) => {
 
       try {
         const payoutId = Date.now() + Math.floor(Math.random() * 1000) + upline.level + Math.floor(Math.random() * 1000);
-        const today = new Date().toISOString().split('T')[0];
+        const today = customDate || new Date().toISOString().split('T')[0];
 
         // Create payout record
         const payout = new PayoutModel({
