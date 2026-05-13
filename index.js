@@ -93,6 +93,7 @@ io.on("connection", (socket) => {
       activeUsers.set(userId, new Set());
     }
     activeUsers.get(userId).add(socket.id);
+    io.emit("userStatus", { userId, status: "online" });
   }
 
   socket.on("joinRoom", ({ roomId }) => {
@@ -108,12 +109,18 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("messagesRead", { messageIds });
   });
 
+  socket.on("checkUserStatus", ({ userId }, callback) => {
+    const isOnline = activeUsers.has(userId) && activeUsers.get(userId).size > 0;
+    if (typeof callback === "function") callback({ isOnline });
+  });
+
   socket.on("disconnect", () => {
     console.log("🔴 User disconnected from WebSocket:", socket.id);
     if (userId && activeUsers.has(userId)) {
       activeUsers.get(userId).delete(socket.id);
       if (activeUsers.get(userId).size === 0) {
         activeUsers.delete(userId);
+        io.emit("userStatus", { userId, status: "offline" });
       }
     }
   });
