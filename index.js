@@ -30,6 +30,7 @@ const DebugRoutes = require("./routes/DebugRoute");
 
 // 🔐 CASHFREE WEBHOOK CONTROLLER
 const { handleWebhook } = require("./controllers/Payments/CashfreeController");
+const { handleCashfreeWebhook } = require("./controllers/Transaction_Nidhi/TransactionController");
 const connectDB = require("./models/db");
 const { initCronJobs } = require("./cron/cron");
 const { startMaturityScheduler } = require("./utils/maturityScheduler");
@@ -176,9 +177,12 @@ app.options("*", cors({
 }));
 
 // ======================================================
-// ⚠️ IMPORTANT: RAW BODY FOR CASHFREE WEBHOOK
+// ⚠️ IMPORTANT: RAW BODY FOR CASHFREE WEBHOOKS
 // ======================================================
+// Webhooks MUST have raw body for signature verification
 app.use("/webhook/cashfree", express.raw({ type: "*/*" }));
+app.use("/payments/webhook", express.raw({ type: "*/*" }));
+app.use("/transaction/webhook/cashfree", express.raw({ type: "*/*" }));
 
 // ======================================================
 //        📦 BODY PARSER (normal APIs)
@@ -187,9 +191,11 @@ app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 
 // ======================================================
-// 💳 CASHFREE WEBHOOK ROUTE (must come AFTER raw body)
+// 💳 CASHFREE WEBHOOK ROUTES (must come AFTER raw body)
 // ======================================================
 app.post("/webhook/cashfree", handleWebhook);
+app.post("/payments/webhook", handleWebhook);
+app.post("/transaction/webhook/cashfree", handleCashfreeWebhook);
 
 // ======================================================
 //    📷 ImageKit Configuration (Optional but Secure)

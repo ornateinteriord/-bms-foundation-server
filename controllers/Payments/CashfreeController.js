@@ -252,8 +252,10 @@ exports.createOrder = async (req, res) => {
     if (!frontendUrl.startsWith("http")) frontendUrl = "http://" + frontendUrl;
     if (!backendUrl.startsWith("http")) backendUrl = "https://" + backendUrl;
 
+    const order_id = `ORDER_${Date.now()}`;
+
     const returnUrl =
-      `${frontendUrl}/user/dashboard?order_id={order_id}&order_status={order_status}&member_id=${memberId}`;
+      `${frontendUrl}/user/dashboard?order_id=${order_id}&order_status={order_status}&member_id=${memberId}`;
 
     const notifyUrl = `${backendUrl}/payments/webhook`;
 
@@ -261,6 +263,7 @@ exports.createOrder = async (req, res) => {
 
     // -------- CASHFREE ORDER PAYLOAD ----------
     const cashfreeBody = {
+      order_id,
       order_amount: amount,
       order_currency: currency,
 
@@ -363,17 +366,6 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // Check if payment exists in our database
-    const payment = await PaymentModel.findOne({ orderId: orderId });
-
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment record not found"
-      });
-    }
-
-    // Get payment status from Cashfree
     const CASHFREE_APP_ID = process.env.CASHFREE_APP_ID;
     const CASHFREE_SECRET_KEY = process.env.CASHFREE_SECRET_KEY;
 
@@ -391,13 +383,37 @@ exports.verifyPayment = async (req, res) => {
       "x-client-secret": CASHFREE_SECRET_KEY,
     };
 
-    // Call Cashfree API directly with correct endpoint
+    // Always query Cashfree directly for the real-time order status
+    console.log("🔍 Querying Cashfree for order status:", orderId);
     const response = await axios.get(`${CASHFREE_BASE}/pg/orders/${orderId}`, { headers });
+    console.log("📥 Cashfree order status response:", response.data.order_status);
 
-    // Update our payment record
-    payment.status = response.data.order_status;
-    payment.rawResponse = response.data;
-    await payment.save();
+    // Also update our local payment record if it exists (best-effort, non-blocking)
+    try {
+      const payment = await PaymentModel.findOne({ orderId: orderId });
+      if (payment) {
+        payment.status = response.data.order_status;
+        payment.rawResponse = response.data;
+        await payment.save();
+        console.log("✅ Local payment record updated with status:", response.data.order_status);
+      } else {
+        // Payment record missing in DB (e.g. DB write failed at order creation time) —
+        // create it now so future webhooks/verifications can find it
+        console.warn("⚠️ Payment record not found locally for orderId:", orderId, "— creating it now from Cashfree data.");
+        await PaymentModel.create({
+          memberId: response.data.customer_details?.customer_id || "unknown",
+          orderId: response.data.order_id,
+          paymentSessionId: response.data.payment_session_id || "",
+          amount: response.data.order_amount,
+          currency: response.data.order_currency || "INR",
+          status: response.data.order_status,
+          rawResponse: response.data
+        });
+      }
+    } catch (dbErr) {
+      // Non-critical — we still return the Cashfree status to the user
+      console.error("⚠️ Failed to update/create local payment record:", dbErr.message);
+    }
 
     // Get payment time from payment details if available
     const paymentTime = response.data.payment_details?.length > 0
@@ -415,6 +431,17 @@ exports.verifyPayment = async (req, res) => {
     });
   } catch (error) {
     console.error("Error verifying payment:", error);
+
+    // If Cashfree itself returned a 404 (order not found at Cashfree), surface that clearly
+    if (error.response?.status === 404) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found at payment gateway. It may have expired or was never created.",
+        payment_status: "NOT_FOUND",
+        order_id: req.params.orderId
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Failed to verify payment",
