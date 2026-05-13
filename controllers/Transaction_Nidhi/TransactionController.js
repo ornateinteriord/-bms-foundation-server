@@ -114,14 +114,16 @@ exports.createPaymentOrder = async (req, res) => {
     const MemberModel = require("../../models/member.model");
 
     try {
-        const { member_id, amount, mobileno, Name, email, account_id, account_no, account_type, description } = req.body;
+        const { member_id, amount, mobileno, Name, email, account_id, account_no, account_type, account_group_name, description, payment_type, ...extraParams } = req.body;
 
         if (!member_id || !amount || !mobileno || !Name) {
             return res.status(400).json({ success: false, message: "Missing required fields: member_id, amount, mobileno, Name" });
         }
 
-        // Validate account details are provided
-        if (!account_id || !account_no || !account_type) {
+        const isAccountOpening = payment_type === 'ACCOUNT_OPENING';
+
+        // Validate account details are provided (if not account opening)
+        if (!isAccountOpening && (!account_id || !account_no || !account_type)) {
             return res.status(400).json({
                 success: false,
                 message: "Missing required account details: account_id, account_no, account_type"
@@ -129,8 +131,14 @@ exports.createPaymentOrder = async (req, res) => {
         }
 
         // Validate member exists and is active
-        const allMembers = await MemberModel.find({});
-        const member = allMembers.find(m => m.member_id === member_id || m.member_id === parseInt(member_id));
+        const member = await MemberModel.findOne({
+            $or: [
+                { member_id: member_id },
+                { Member_id: member_id },
+                { member_id: parseInt(member_id) || null },
+                { Member_id: parseInt(member_id) || null }
+            ]
+        });
 
         if (!member) {
             return res.status(404).json({
@@ -146,38 +154,73 @@ exports.createPaymentOrder = async (req, res) => {
             });
         }
 
-        // Validate account exists and belongs to member
-        const allAccounts = await AccountsModel.find({});
-        const account = allAccounts.find(acc =>
-            (acc.account_id === account_id || acc.account_id === parseInt(account_id)) &&
-            (acc.member_id === member_id || acc.member_id === parseInt(member_id)) &&
-            (acc.account_no == account_no) &&
-            (acc.account_type === account_type)
-        );
-
-        if (!account) {
-            return res.status(404).json({
-                success: false,
-                message: "Account not found or does not belong to this member"
+        if (!isAccountOpening) {
+            // Validate account exists and belongs to member
+            const account = await AccountsModel.findOne({
+                account_id: { $in: [account_id, parseInt(account_id) || null] },
+                member_id: { $in: [member_id, parseInt(member_id) || null] },
+                account_no: String(account_no),
+                account_type: account_type
             });
-        }
 
-        // Check if account is active
-        if (account.status !== "active") {
-            return res.status(403).json({
-                success: false,
-                message: "Account is not active. Cannot add money to inactive account."
+            if (!account) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Account not found or does not belong to this member"
+                });
+            }
+
+            // Check if account is active
+            if (account.status !== "active") {
+                return res.status(403).json({
+                    success: false,
+                    message: "Account is not active. Cannot add money to inactive account."
+                });
+            }
+        } else {
+            // Check if member already has an account of this type (active or pending)
+            const existingAccount = await AccountsModel.findOne({
+                member_id: member_id,
+                account_type: account_type,
+                status: { $nin: ["closed", "inactive"] }
             });
+
+            if (existingAccount) {
+                return res.status(409).json({
+                    success: false,
+                    message: `You already have an active account of this type.`
+                });
+            }
         }
 
         const orderId = `ORDER_${Date.now()}`; // Generate unique Order ID
+
+        // Map internal account codes to friendly URL segments
+        const getFriendlyType = (type) => {
+            const t = String(type || '').toUpperCase().trim();
+            // Internal account group codes
+            if (t === 'AGP001') return 'sb';
+            if (t === 'AGP002') return 'rd';
+            if (t === 'AGP003') return 'fd';
+            if (t === 'AGP004') return 'mis';
+            if (t === 'AGP005') return 'pigmy';
+            if (t === 'AGP006') return 'ca';
+            // Plain group name strings sent by frontend
+            if (t === 'SB' || t.includes('SAVING')) return 'sb';
+            if (t === 'CA' || t.includes('CURRENT')) return 'ca';
+            if (t === 'RD' || t.includes('RECURRING')) return 'rd';
+            if (t === 'FD' || t.includes('FIXED')) return 'fd';
+            if (t === 'MIS' || t.includes('MONTHLY')) return 'mis';
+            if (t === 'PIGMY' || t.includes('PIGMY')) return 'pigmy';
+            return t.toLowerCase();
+        };
 
         // Prepare Request for Cashfree Orders API
         const request = {
             order_id: orderId,
             order_amount: Number(amount),
             order_currency: "INR",
-            order_note: description || "Add Money",
+            order_note: description || (isAccountOpening ? `Account Opening: ${account_type}` : "Add Money"),
             customer_details: {
                 customer_id: String(member_id),
                 customer_phone: mobileno,
@@ -185,13 +228,20 @@ exports.createPaymentOrder = async (req, res) => {
                 customer_email: email || "customer@example.com"
             },
             order_meta: {
-                return_url: `${process.env.FRONTEND_URL}/user/account-wallet?order_id={order_id}&order_status={order_status}&member_id=${member_id}`,
+                // Use account_group_name directly if sent by frontend (most reliable)
+                // e.g. 'CA', 'SB', 'RD' → mapped to friendly URL segment
+                return_url: `${process.env.FRONTEND_URL}/user/account-opening/${getFriendlyType(account_group_name || account_type)}?order_id=${orderId}&order_status={order_status}`,
                 notify_url: `${process.env.BACKEND_URL}/transaction/webhook/cashfree`
             },
             order_tags: {
-                account_no: String(account_no),
-                account_type: account_type,
-                member_id: String(member_id)
+                payment_type: payment_type || 'ADD_MONEY',
+                account_no: String(account_no || ""),
+                account_type: String(account_type || ""),
+                member_id: String(member_id),
+                ...Object.keys(extraParams).reduce((acc, key) => {
+                    acc[key] = String(extraParams[key]);
+                    return acc;
+                }, {})
             }
         };
 
@@ -243,8 +293,8 @@ exports.createPaymentOrder = async (req, res) => {
             member_id,
             account_number: account_no,
             account_type: account_type,
-            transaction_type: "Money Added",
-            description: `Online Top-up to Account ${account_no} (Pending)`,
+            transaction_type: isAccountOpening ? "Account Opening" : "Money Added",
+            description: isAccountOpening ? `Account Opening Deposit (Pending)` : `Online Top-up to Account ${account_no} (Pending)`,
             credit: Number(amount),
             debit: 0,
             balance: 0, // Will update on success
@@ -253,8 +303,10 @@ exports.createPaymentOrder = async (req, res) => {
             gateway_order_id: response.data.order_id,
             payment_session_id: paymentSessionId,
             payment_status: "Pending",
+            payment_type: payment_type || 'ADD_MONEY',
             Name,
-            mobileno
+            mobileno,
+            metadata: extraParams // Store extra params in metadata
         });
 
         await newTx.save();
@@ -465,32 +517,131 @@ exports.handleCashfreeWebhook = async (req, res) => {
                 return res.status(200).json({ received: true });
             }
 
-            // Update account balance
-            const account = await AccountsModel.findOne({
-                member_id: transaction.member_id,
-                account_no: transaction.account_number,
-                account_type: transaction.account_type,
-                status: "active"
-            });
+            const isAccountOpening = transaction.payment_type === 'ACCOUNT_OPENING';
+            let accountNo = transaction.account_number;
+            let accountType = transaction.account_type;
 
-            if (account) {
-                account.account_amount += transaction.credit;
-                await account.save();
-                transaction.balance = account.account_amount;
-                console.log("✅ Account balance updated:", account.account_amount);
+            if (isAccountOpening) {
+                console.log("🆕 Processing account opening for member:", transaction.member_id);
+                try {
+                    const AccountGroupModel = require("../../models/accountGroup.model");
+                    const MemberModel = require("../../models/member.model");
+                    
+                    const { 
+                        account_operation, 
+                        interest_rate, 
+                        duration, 
+                        date_of_maturity 
+                    } = transaction.metadata || {};
+
+                    // Get the account group to determine the prefix for account_no
+                    const accountGroup = await AccountGroupModel.findOne({
+                        account_group_id: accountType
+                    });
+
+                    if (!accountGroup) {
+                        throw new Error(`Account type ${accountType} not found`);
+                    }
+
+                    // --- ACCOUNT ID & NUMBER GENERATION ---
+                    const lastAccount = await AccountsModel.findOne()
+                        .sort({ account_id: -1 })
+                        .limit(1);
+
+                    let newAccountId = "ACC000001";
+                    if (lastAccount && lastAccount.account_id) {
+                        const numericPart = lastAccount.account_id.replace(/^ACC/, '');
+                        const lastId = parseInt(numericPart);
+                        if (!isNaN(lastId)) {
+                            newAccountId = `ACC${(lastId + 1).toString().padStart(6, '0')}`;
+                        }
+                    }
+
+                    const groupName = accountGroup.account_group_name?.toUpperCase() || "";
+                    let typePrefix = "ACC";
+                    if (groupName.includes("SAVING") || groupName === "SB") typePrefix = "SB";
+                    else if (groupName.includes("CURRENT") || groupName === "CA" || groupName === "CUR") typePrefix = "CA";
+                    else if (groupName.includes("RECURRING") || groupName === "RD") typePrefix = "RD";
+                    else if (groupName.includes("FIXED") || groupName === "FD") typePrefix = "FD";
+                    else if (groupName.includes("PIGMY") || groupName === "PIG") typePrefix = "PIG";
+                    else if (groupName.includes("MONTHLY") || groupName === "MIS") typePrefix = "MI";
+                    else if (groupName.includes("DAILY")) typePrefix = "PIG";
+                    
+                    const lastAccountWithPrefix = await AccountsModel.findOne({
+                        account_no: { $regex: new RegExp(`^${typePrefix}`) }
+                    }).sort({ account_no: -1 }).limit(1);
+
+                    let newAccountNo;
+                    if (lastAccountWithPrefix && lastAccountWithPrefix.account_no) {
+                        const sequencePart = lastAccountWithPrefix.account_no.substring(typePrefix.length);
+                        const lastSeq = parseInt(sequencePart);
+                        if (!isNaN(lastSeq)) {
+                            newAccountNo = `${typePrefix}${(lastSeq + 1).toString().padStart(6, '0')}`;
+                        } else {
+                            newAccountNo = `${typePrefix}000001`;
+                        }
+                    } else {
+                        newAccountNo = `${typePrefix}000001`;
+                    }
+
+                    // Create new account
+                    const newAccount = await AccountsModel.create({
+                        account_id: newAccountId,
+                        date_of_opening: new Date(),
+                        member_id: transaction.member_id,
+                        account_type: accountType,
+                        account_no: newAccountNo,
+                        account_operation: account_operation || "Single",
+                        entered_by: transaction.member_id,
+                        interest_rate: (groupName.includes("SAVING") || groupName === "SB" || groupName.includes("CURRENT") || groupName === "CA") ? 0 : (interest_rate || 0),
+                        duration: duration || 0,
+                        date_of_maturity: date_of_maturity,
+                        status: "active",
+                        account_amount: transaction.credit
+                    });
+
+                    accountNo = newAccountNo;
+                    transaction.account_number = newAccountNo;
+                    transaction.balance = transaction.credit;
+                    transaction.description = `Account Opening Deposit - Account ${newAccountNo} (Success)`;
+                    
+                    console.log("✅ Account created successfully:", newAccountNo);
+                } catch (accError) {
+                    console.error("❌ Error creating account in webhook:", accError.message);
+                    transaction.status = "Processing Error";
+                    transaction.description = `Payment success but account creation failed: ${accError.message}`;
+                    await transaction.save();
+                    return res.status(200).json({ received: true });
+                }
             } else {
-                console.warn("⚠️ Account not found for balance update");
+                // Update existing account balance
+                const account = await AccountsModel.findOne({
+                    member_id: transaction.member_id,
+                    account_no: transaction.account_number,
+                    account_type: transaction.account_type,
+                    status: "active"
+                });
+
+                if (account) {
+                    account.account_amount += transaction.credit;
+                    await account.save();
+                    transaction.balance = account.account_amount;
+                    transaction.description = `Online Top-up to Account ${transaction.account_number} (Success)`;
+                    console.log("✅ Account balance updated:", account.account_amount);
+                } else {
+                    console.warn("⚠️ Account not found for balance update");
+                    transaction.description = `Payment success but account ${transaction.account_number} not found for balance update`;
+                }
             }
 
             transaction.status = "Completed";
             transaction.payment_status = "Success";
             transaction.payment_completed_at = new Date();
             transaction.payment_data = webhookData.data;
-            transaction.description = `Online Top-up to Account ${transaction.account_number} (Success)`;
 
             await transaction.save();
 
-            console.log("✅ Payment completed & balance updated");
+            console.log("✅ Payment processed successfully");
 
             // Process commission for introducers
             try {
