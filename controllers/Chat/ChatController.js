@@ -157,7 +157,7 @@ const sendMessage = async (req, res) => {
         }
         if (!sender) return res.status(404).json({ success: false, message: "Sender not found" });
 
-        let displayText = text?.trim() || (messageType === "image" ? "📷 Image" : messageType === "file" ? "📎 File" : "");
+        let displayText = text?.trim() || (messageType === "image" ? "📷 Image" : messageType === "file" ? "📎 File" : messageType === "audio" ? "🎤 Voice message" : "");
 
         let chatRoom = await ChatRoomModel.findOne({ roomId });
         if (!chatRoom) {
@@ -234,4 +234,47 @@ const getSupportChat = async (req, res) => {
     }
 };
 
-module.exports = { getRooms, getMessages, markAsRead, searchMember, sendMessage, getSupportChat };
+// ─── Delete a message ────────────────────────────────────────────────────────
+const deleteMessage = async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const userId = req.user.memberId || req.user.Member_id || req.user.id;
+        const userRole = req.user.role;
+
+        const message = await MessageModel.findById(messageId);
+        if (!message) return res.status(404).json({ success: false, message: "Message not found" });
+
+        // Only sender or admin can delete
+        const isAdmin = userRole === "admin" || userRole === "ADMIN";
+        const isSender = message.senderId === userId || (isAdmin && message.senderId === "ADMIN_1");
+
+        if (!isSender && !isAdmin) {
+            return res.status(403).json({ success: false, message: "Not authorized to delete this message" });
+        }
+
+        await MessageModel.findByIdAndDelete(messageId);
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(message.roomId).emit("messageDeleted", { messageId, roomId: message.roomId });
+        }
+
+        res.status(200).json({ success: true, message: "Message deleted" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Failed to delete message", error: error.message });
+    }
+};
+
+// ─── Get user status ──────────────────────────────────────────────────────────
+const getUserStatus = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const activeUsers = req.app.get("activeUsers");
+        const isOnline = activeUsers && activeUsers.has(userId) && activeUsers.get(userId).size > 0;
+        res.status(200).json({ success: true, isOnline });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Failed to get status", error: error.message });
+    }
+};
+
+module.exports = { getRooms, getMessages, markAsRead, searchMember, sendMessage, getSupportChat, deleteMessage, getUserStatus };
