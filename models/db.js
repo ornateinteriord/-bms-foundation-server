@@ -3,6 +3,17 @@ const mongoose = require("mongoose");
 // Global connection cache for serverless
 let cachedConnection = null;
 
+// Connection event listeners - registered ONLY ONCE when module is loaded
+mongoose.connection.on('disconnected', () => {
+  console.log('⚠️  MongoDB disconnected');
+  cachedConnection = null;
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('❌ MongoDB connection error:', err);
+  cachedConnection = null;
+});
+
 const connectDB = async () => {
   // Return cached connection if exists (CRITICAL for serverless)
   if (cachedConnection && mongoose.connection.readyState === 1) {
@@ -36,17 +47,6 @@ const connectDB = async () => {
     cachedConnection = connection;
     console.log("✅ MongoDB Connected Successfully");
 
-    // Connection event listeners
-    mongoose.connection.on('disconnected', () => {
-      console.log('⚠️  MongoDB disconnected');
-      cachedConnection = null;
-    });
-
-    mongoose.connection.on('error', (err) => {
-      console.error('❌ MongoDB connection error:', err);
-      cachedConnection = null;
-    });
-
     return connection;
   } catch (error) {
     console.error("❌ MongoDB Connection Error:", error.message);
@@ -56,4 +56,4 @@ const connectDB = async () => {
 };
 
 // Export the connection function
-module.exports = connectDB;
+module.exports = connectDB;

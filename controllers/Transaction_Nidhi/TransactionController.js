@@ -445,9 +445,9 @@ exports.handleCashfreeWebhook = async (req, res) => {
 
         console.log("📦 Webhook Data:", JSON.stringify(webhookData, null, 2));
 
-        const eventType = webhookData.type;
+        const eventType = webhookData.type || webhookData.event;
         // Extract order_id from Cashfree Orders API webhook (multiple fallbacks like BICCSL-Server)
-        const orderId = webhookData?.data?.order?.order_id || webhookData?.data?.order_id || webhookData?.order_id;
+        const orderId = webhookData?.data?.order?.order_id || webhookData?.data?.order_id || webhookData?.order_id || webhookData?.content?.order?.order_id;
 
         console.log("🔍 Extracted Order ID:", orderId);
 
@@ -490,7 +490,8 @@ exports.handleCashfreeWebhook = async (req, res) => {
         // -------------------------
         // ✅ PAYMENT SUCCESS
         // -------------------------
-        if (eventType === "PAYMENT_SUCCESS_WEBHOOK") {
+        const successEvents = ["PAYMENT_SUCCESS_WEBHOOK", "ORDER_PAID", "PAYMENT_SUCCESS", "SUCCESS"];
+        if (successEvents.includes(eventType)) {
             // Additional check: Skip if already completed (race condition protection)
             if (transaction.status === "Completed") {
                 console.log("⚠️ Transaction already completed, skipping duplicate processing");
@@ -517,7 +518,7 @@ exports.handleCashfreeWebhook = async (req, res) => {
                 return res.status(200).json({ received: true });
             }
 
-            const isAccountOpening = transaction.payment_type === 'ACCOUNT_OPENING';
+            const isAccountOpening = transaction.payment_type === 'ACCOUNT_OPENING' || transaction.transaction_type === 'Account Opening';
             let accountNo = transaction.account_number;
             let accountType = transaction.account_type;
 

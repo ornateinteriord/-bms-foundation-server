@@ -16,11 +16,15 @@ const getWalletOverview = async (req, res) => {
 
     const transactions = await TransactionModel.find({ member_id: memberId });
 
-    // Filter out loan-related transactions
-    const nonLoanTransactions = transactions.filter(tx =>
-      !tx.transaction_type?.toLowerCase().includes('loan') &&
-      !tx.description?.toLowerCase().includes('loan')
-    );
+    const nonLoanTransactions = transactions.filter(tx => {
+      const type = tx.transaction_type?.toLowerCase() || '';
+      const desc = tx.description?.toLowerCase() || '';
+      return !type.includes('loan') && 
+             !desc.includes('loan') && 
+             !type.includes('agent') &&
+             !type.includes('commission') &&
+             !desc.includes('commission');
+    });
 
     const completedAndPendingTx = nonLoanTransactions.filter(tx =>
       tx.status === "Completed" || tx.status === "Pending" || tx.status === "Approved"
@@ -138,6 +142,7 @@ const getWalletOverview = async (req, res) => {
           breakdown: `₹${completedAndPendingTx.reduce((acc, tx) => acc + (parseFloat(tx.ew_credit) || 0), 0).toFixed(2)} - ₹${completedAndPendingTx.reduce((acc, tx) => acc + (parseFloat(tx.ew_debit) || 0), 0).toFixed(2)} = ₹${Math.max(0, availableBalance).toFixed(2)}`,
           note: "Available balance excludes loan transactions. Pending withdrawals: ₹" + pendingWithdrawals.toFixed(2)
         },
+        transactions: nonLoanTransactions.sort((a, b) => new Date(b.createdAt || b.transaction_date) - new Date(a.createdAt || a.transaction_date)),
       },
     });
   } catch (error) {
@@ -224,10 +229,15 @@ const getWalletWithdraw = async (req, res) => {
 
     const allTransactions = await TransactionModel.find({ member_id: memberId });
 
-    const nonLoanTransactions = allTransactions.filter(tx =>
-      !tx.transaction_type?.toLowerCase().includes('loan') &&
-      !tx.description?.toLowerCase().includes('loan')
-    );
+    const nonLoanTransactions = allTransactions.filter(tx => {
+      const type = tx.transaction_type?.toLowerCase() || '';
+      const desc = tx.description?.toLowerCase() || '';
+      return !type.includes('loan') && 
+             !desc.includes('loan') && 
+             !type.includes('agent') &&
+             !type.includes('commission') &&
+             !desc.includes('commission');
+    });
 
     let totalCredits = 0;
     let totalDebits = 0;
@@ -286,8 +296,6 @@ const getWalletWithdraw = async (req, res) => {
         }
       });
     }
-
-    // Max limit check removed as per user request
 
     // Check if member has unpaid loan from before last Saturday
     if (hasUnpaidLoan) {
@@ -428,5 +436,154 @@ const getWalletWithdraw = async (req, res) => {
   }
 };
 
+const getAgentCommissionOverview = async (req, res) => {
+  try {
+    const { memberId } = req.params;
+    if (!memberId) {
+      return res.status(400).json({ success: false, message: "Member ID is required" });
+    }
 
-module.exports = { getWalletOverview, getWalletWithdraw };
+    const member = await MemberModel.findOne({ Member_id: memberId });
+    if (!member) {
+      const agent = await require("../../../models/agent.model").findOne({ agent_id: memberId });
+      if (!agent) {
+        return res.status(404).json({ success: false, message: "Member/Agent not found" });
+      }
+      const commissions = await require("../../../models/commission.model").find({ beneficiary_id: memberId });
+      const agentTransactionTypes = ["Agent Withdrawal", "Level Benefits", "ROI Level Benefit", "Direct Benefits", "Repayment Commission", "Commission Credit"];
+      const transactions = await TransactionModel.find({ 
+        member_id: memberId, 
+        $or: [
+          { transaction_type: { $in: agentTransactionTypes } },
+          { transaction_type: { $regex: /benefit|commission/i } }
+        ]
+      });
+
+      const totalIncome = commissions.reduce((acc, c) => acc + (c.commission_amount || 0), 0) + 
+                          transactions.reduce((acc, tx) => acc + (parseFloat(tx.ew_credit) || 0), 0);
+      const totalWithdrawal = transactions.filter(tx => tx.status === "Completed").reduce((acc, tx) => acc + (parseFloat(tx.ew_debit) || 0), 0);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          balance: (agent.commission_balance || 0).toFixed(2),
+          totalIncome: totalIncome.toFixed(2),
+          totalWithdrawal: totalWithdrawal.toFixed(2),
+          transactions: [...commissions.map(c => ({
+            ...c._doc,
+            description: `Commission from ${c.source_name} (Level ${c.level})`,
+            transaction_type: "Commission Credit",
+            ew_credit: c.commission_amount,
+            ew_debit: 0,
+            status: "Completed"
+          })), ...transactions].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        }
+      });
+    }
+
+    const commissions = await require("../../../models/commission.model").find({ beneficiary_id: memberId });
+    const transactions = await TransactionModel.find({ member_id: memberId, transaction_type: "Agent Withdrawal" });
+
+    const totalIncome = commissions.reduce((acc, c) => acc + (c.commission_amount || 0), 0);
+    const totalWithdrawal = transactions.filter(tx => tx.status === "Completed").reduce((acc, tx) => acc + (parseFloat(tx.ew_debit) || 0), 0);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        balance: (member.commission_balance || 0).toFixed(2),
+        totalIncome: totalIncome.toFixed(2),
+        totalWithdrawal: totalWithdrawal.toFixed(2),
+        transactions: [...commissions.map(c => ({
+          ...c._doc,
+          description: `Commission from ${c.source_name} (Level ${c.level})`,
+          transaction_type: "Commission Credit",
+          ew_credit: c.commission_amount,
+          ew_debit: 0,
+          status: "Completed"
+        })), ...transactions].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      }
+    });
+  } catch (error) {
+    console.error("Error in getAgentCommissionOverview:", error);
+    return res.status(500).json({ success: false, message: "Server error", error: error.message });
+  }
+};
+
+const agentCommissionWithdraw = async (req, res) => {
+  try {
+    const { memberId, amount } = req.body;
+
+    if (!memberId) return res.status(400).json({ success: false, message: "Member ID is required" });
+    if (!amount) return res.status(400).json({ success: false, message: "Withdrawal amount is required" });
+
+    const withdrawalAmount = parseFloat(amount);
+    if (isNaN(withdrawalAmount) || withdrawalAmount <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid withdrawal amount" });
+    }
+
+    let user = await MemberModel.findOne({ Member_id: memberId });
+    let UserType = "MEMBER";
+    if (!user) {
+      user = await require("../../../models/agent.model").findOne({ agent_id: memberId });
+      UserType = "AGENT";
+    }
+
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    if (withdrawalAmount > user.commission_balance) {
+      return res.status(400).json({ success: false, message: "Insufficient commission balance" });
+    }
+
+    if (withdrawalAmount < 100) {
+      return res.status(400).json({ success: false, message: "Minimum withdrawal amount is ₹100" });
+    }
+
+    const lastTransaction = await TransactionModel.findOne({}).sort({ createdAt: -1 }).exec();
+    let newTransactionId = 1;
+    if (lastTransaction && lastTransaction.transaction_id) {
+      const lastIdNumber = parseInt(lastTransaction.transaction_id.replace(/\D/g, ""), 10) || 0;
+      newTransactionId = lastIdNumber + 1;
+    }
+
+    const newTransaction = new TransactionModel({
+      transaction_id: newTransactionId.toString(),
+      transaction_date: new Date(),
+      member_id: memberId,
+      description: "Commission Withdrawal",
+      transaction_type: "Agent Withdrawal",
+      ew_credit: 0,
+      ew_debit: withdrawalAmount,
+      status: "Pending",
+      deduction: 0,
+      net_amount: withdrawalAmount,
+      gross_amount: withdrawalAmount
+    });
+
+    await newTransaction.save();
+
+    if (UserType === "MEMBER") {
+      await MemberModel.findOneAndUpdate({ Member_id: memberId }, { $inc: { commission_balance: -withdrawalAmount } });
+    } else {
+      await require("../../../models/agent.model").findOneAndUpdate({ agent_id: memberId }, { $inc: { commission_balance: -withdrawalAmount } });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Agent commission withdrawal request submitted successfully",
+      data: {
+        transactionId: newTransaction.transaction_id,
+        withdrawalDetails: {
+          grossAmount: withdrawalAmount.toFixed(2),
+          deduction: "0.00",
+          netAmount: withdrawalAmount.toFixed(2),
+          deductionRate: "0%"
+        }
+      }
+    });
+  } catch (error) {
+    console.error("Error in agentCommissionWithdraw:", error);
+    return res.status(500).json({ success: false, message: "Server error", error: error.message });
+  }
+};
+
+module.exports = { getWalletOverview, getWalletWithdraw, getAgentCommissionOverview, agentCommissionWithdraw };

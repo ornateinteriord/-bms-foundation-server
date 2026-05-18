@@ -110,13 +110,14 @@ const validateCommissionEligibility = (transaction, config) => {
         return { eligible: false, reason: "Commission system is disabled" };
     }
 
-    // NEW: Restrict to "Account Opening" only
+    // NEW: Restrict to "Account Opening" and "Money Added" only
     console.log(`   Transaction Type: ${transaction.transaction_type}`);
-    if (transaction.transaction_type !== "Account Opening") {
-        console.log("   Result: ❌ Not Eligible - Not an 'Account Opening' transaction");
+    const allowedTypes = ["Account Opening", "Money Added", "Deposit", "Receipt"];
+    if (!allowedTypes.includes(transaction.transaction_type)) {
+        console.log(`   Result: ❌ Not Eligible - Transaction type '${transaction.transaction_type}' not eligible`);
         return { 
             eligible: false, 
-            reason: "Only 'Account Opening' transactions are eligible for commission" 
+            reason: `Only ${allowedTypes.join(', ')} transactions are eligible for commission` 
         };
     }
 

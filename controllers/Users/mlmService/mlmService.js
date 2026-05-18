@@ -155,7 +155,7 @@ const calculateCommissions = async (newMemberId, directSponsorId, specificAmount
             new_member_name: newMember.Name,
             amount: commissionAmount,
             payout_type: `${getOrdinal(upline.level)} Level Benefits (${pkgType})`,
-            description: `Level ${upline.level} commission (${percentage}%) from member ${newMemberId}'s ${pkgType} package (₹${packageValue})`,
+            description: `Level ${upline.level} benefit (${percentage}%) from member ${newMemberId}'s ${pkgType} package (₹${packageValue})`,
             sponsor_status: upline.sponsor_status
           });
 
