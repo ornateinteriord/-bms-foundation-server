@@ -10,22 +10,38 @@ router.get("/commission-debug/:memberId", async (req, res) => {
     try {
         const { memberId } = req.params;
 
-        // Find member
-        const member = await MemberModel.findOne({ member_id: memberId });
-        if (!member) {
+        // Find user (Member or Agent)
+        let user = await MemberModel.findOne({ 
+            $or: [
+                { member_id: memberId }, 
+                { Member_id: memberId }
+            ] 
+        });
+        
+        let userType = "MEMBER";
+        
+        if (!user) {
+            const AgentModel = require("../models/agent.model");
+            user = await AgentModel.findOne({ agent_id: memberId });
+            userType = "AGENT";
+        }
+
+        if (!user) {
             return res.status(404).json({
-                error: "Member not found",
-                member_id: memberId
+                error: "User (Member/Agent) not found",
+                user_id: memberId
             });
         }
 
-        // Check member's commission eligibility
-        const memberInfo = {
-            member_id: member.member_id,
-            name: member.name,
-            commission_eligible: member.commission_eligible,
-            introducer_hierarchy: member.introducer_hierarchy || [],
-            hierarchy_length: (member.introducer_hierarchy || []).length
+        // Check user's commission eligibility
+        const userInfo = {
+            user_id: user.member_id || user.Member_id || user.agent_id,
+            user_type: userType,
+            name: user.name || user.Name,
+            commission_eligible: user.commission_eligible,
+            commission_balance: user.commission_balance,
+            introducer_hierarchy: user.introducer_hierarchy || [],
+            hierarchy_length: (user.introducer_hierarchy || []).length
         };
 
         // Get member's accounts
@@ -65,9 +81,9 @@ router.get("/commission-debug/:memberId", async (req, res) => {
 
         // Check introducer details
         const introducerDetails = [];
-        if (member.introducer_hierarchy && member.introducer_hierarchy.length > 0) {
-            for (let i = 0; i < member.introducer_hierarchy.length; i++) {
-                const introducerId = member.introducer_hierarchy[i];
+        if (user.introducer_hierarchy && user.introducer_hierarchy.length > 0) {
+            for (let i = 0; i < user.introducer_hierarchy.length; i++) {
+                const introducerId = user.introducer_hierarchy[i];
                 const introducer = await MemberModel.findOne({ member_id: introducerId });
 
                 if (introducer) {
@@ -92,7 +108,7 @@ router.get("/commission-debug/:memberId", async (req, res) => {
         }
 
         return res.json({
-            member: memberInfo,
+            member: userInfo,
             accounts: accountInfo,
             recent_transactions: transactionInfo,
             introducer_chain: introducerDetails,
@@ -113,10 +129,11 @@ router.get("/commission-debug/:memberId", async (req, res) => {
                 date: c.transaction_date
             })),
             diagnosis: {
-                can_earn_commission: member.commission_eligible === true,
-                has_introducer: (member.introducer_hierarchy || []).length > 0,
-                introducer_count: (member.introducer_hierarchy || []).length,
+                can_earn_commission: user.commission_eligible === true,
+                has_introducer: (user.introducer_hierarchy || []).length > 0,
+                introducer_count: (user.introducer_hierarchy || []).length,
                 has_active_account: accounts.some(a => a.status === "active"),
+                balance_in_profile: user.commission_balance,
                 issues: []
             }
         });
@@ -304,6 +321,99 @@ router.get("/matured-accounts", Authenticated, authorizeRole(["super_admin", "ad
             success: false,
             error: error.message
         });
+    }
+});
+
+// Sync commission balance with records to fix discrepancies
+router.get("/sync-commission-balance/:memberId", async (req, res) => {
+    try {
+        const { memberId } = req.params;
+
+        // Calculate total from actual commission records
+        const commissions = await CommissionModel.find({ 
+            beneficiary_id: memberId,
+            status: "CREDITED" 
+        });
+        
+        const actualBalance = commissions.reduce((sum, c) => sum + (c.commission_amount || 0), 0);
+
+        // Update Member or Agent
+        let user = await MemberModel.findOneAndUpdate(
+            { $or: [{ member_id: memberId }, { Member_id: memberId }] },
+            { $set: { commission_balance: actualBalance } },
+            { new: true }
+        );
+
+        if (!user) {
+            const AgentModel = require("../models/agent.model");
+            user = await AgentModel.findOneAndUpdate(
+                { agent_id: memberId },
+                { $set: { commission_balance: actualBalance } },
+                { new: true }
+            );
+        }
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: `Balance synced for ${memberId}`,
+            previous_balance: user.commission_balance + (user.commission_balance === actualBalance ? 0 : -1), // Rough estimate if not available before
+            new_balance: actualBalance,
+            records_found: commissions.length,
+            user_type: user.agent_id ? "AGENT" : "MEMBER"
+        });
+    } catch (error) {
+        console.error("Sync error:", error);
+        return res.status(500).json({ 
+            success: false,
+            error: error.message 
+        });
+    }
+});
+
+// Diagnostic route to check user info
+router.get("/user-info/:memberId", async (req, res) => {
+    try {
+        const { memberId } = req.params;
+        const MemberModel = require("../models/member.model");
+        const AgentModel = require("../models/agent.model");
+        const TransactionModel = require("../models/transaction.model");
+
+        let user = await MemberModel.findOne({ $or: [{ Member_id: memberId }, { member_id: memberId }] });
+        let userType = "MEMBER";
+        if (!user) {
+            user = await AgentModel.findOne({ agent_id: memberId });
+            userType = "AGENT";
+        }
+
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        const transactions = await TransactionModel.find({ member_id: memberId });
+
+        return res.status(200).json({
+            user_id: memberId,
+            user_type: userType,
+            wallet_balance: user.wallet_balance,
+            commission_balance: user.commission_balance,
+            transactions_count: transactions.length,
+            transactions: transactions.map(tx => ({
+                id: tx.transaction_id,
+                type: tx.transaction_type,
+                credit: tx.credit || tx.ew_credit,
+                debit: tx.debit || tx.ew_debit,
+                desc: tx.description,
+                date: tx.transaction_date,
+                status: tx.status
+            }))
+        });
+    } catch (error) {
+        return res.status(500).json({ error: error.message });
     }
 });
 

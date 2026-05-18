@@ -77,6 +77,43 @@ const transactionSchema = new mongoose.Schema(
             type: String,
             default: null,
         },
+        // --- Added for Webhook & Payment Support ---
+        payment_type: {
+            type: String,
+            default: 'ADD_MONEY',
+        },
+        payment_status: {
+            type: String,
+            default: 'Pending',
+        },
+        payment_session_id: {
+            type: String,
+            default: null,
+        },
+        webhook_processed: {
+            type: Boolean,
+            default: false,
+        },
+        webhook_processed_at: {
+            type: Date,
+            default: null,
+        },
+        metadata: {
+            type: mongoose.Schema.Types.Mixed,
+            default: {},
+        },
+        payment_gateway: {
+            type: String,
+            default: null,
+        },
+        gateway_order_id: {
+            type: String,
+            default: null,
+        },
+        payment_data: {
+            type: mongoose.Schema.Types.Mixed,
+            default: {},
+        }
     },
     { timestamps: true, collection: "transaction_tbl" }
 );
