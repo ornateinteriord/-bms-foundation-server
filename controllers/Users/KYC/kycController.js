@@ -26,22 +26,7 @@ exports.submitKYC = async (req, res) => {
       return res.status(404).json({ message: "Member not found" });
     }
 
-    // Validate that all required documents are provided
-    const missingDocuments = [];
-    if (!panImage) missingDocuments.push("PAN Image");
-    if (!aadhaarImage) missingDocuments.push("Aadhaar Image");
-    if (!checkImage) missingDocuments.push("Check Image");
-    if (!passbookImage) missingDocuments.push("Passbook Image");
-    if (!rationCardImage) missingDocuments.push("Ration Card Image");
-    if (!profileImage) missingDocuments.push("Profile Image");
-    if (!aadhar_no) missingDocuments.push("Aadhaar Number");
-
-    if (missingDocuments.length > 0) {
-      return res.status(400).json({
-        message: `Missing required fields/documents: ${missingDocuments.join(", ")}`
-      });
-    }
-
+    // Document validation removed as requested
     // ==================== CASHFREE BANK VERIFICATION ====================
     // Note: Currently commented out - Admin will manually validate bank details
     // Uncomment this section when Cashfree Payout is activated

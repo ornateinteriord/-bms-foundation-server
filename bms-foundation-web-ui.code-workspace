@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "../../BMS_Bizz/bms-foundation-web-ui"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.css": "tailwindcss"
+		}
+	}
+}
