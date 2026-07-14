@@ -88,6 +88,15 @@ const processDailyROI = async (targetMemberId = null) => {
         let membersUpdatedCount = 0;
 
         for (const member of activeMembers) {
+            // Check if primary package is managed as an Add-on (new system)
+            const hasPrimaryAddon = await require("../../../models/Packages/AddOnPackage").exists({ 
+                member_id: member.Member_id, 
+                package_id: { $regex: /^PKG-P-/ } 
+            });
+            if (hasPrimaryAddon) {
+                continue; // Phase 2 will handle their primary package and sync stats
+            }
+
             // Start a new session for each member catch-up to ensure atomicity
             const session = await mongoose.startSession();
             session.startTransaction();
@@ -117,7 +126,7 @@ const processDailyROI = async (targetMemberId = null) => {
                     continue;
                 }
 
-                let startRefDate = member.roi_last_payout_date || member.roi_start_date || moment(member.createdAt).utcOffset("+05:30").format("YYYY-MM-DD");
+                let startRefDate = member.roi_last_payout_date || member.roi_start_date || member.Date_of_joining || (member.createdAt ? moment(member.createdAt).utcOffset("+05:30").format("YYYY-MM-DD") : moment().utcOffset("+05:30").format("YYYY-MM-DD"));
                 let currentDayPtr = moment(startRefDate).utcOffset("+05:30").startOf("day").add(1, "days");
 
                 let memberPayoutsThisRun = 0;
@@ -254,7 +263,7 @@ const processDailyROI = async (targetMemberId = null) => {
                     continue;
                 }
 
-                let startRefDate = addon.roi_last_payout_date || addon.roi_start_date || moment(addon.createdAt).utcOffset("+05:30").format("YYYY-MM-DD");
+                let startRefDate = addon.roi_last_payout_date || addon.roi_start_date || (addon.createdAt ? moment(addon.createdAt).utcOffset("+05:30").format("YYYY-MM-DD") : moment().utcOffset("+05:30").format("YYYY-MM-DD"));
                 let currentDayPtr = moment(startRefDate).utcOffset("+05:30").startOf("day").add(1, "days");
 
                 let addonPayoutsThisRun = 0;
@@ -313,10 +322,21 @@ const processDailyROI = async (targetMemberId = null) => {
                                 await payout.save({ session });
                                 await transaction.save({ session });
 
-                                // Credit the user's wallet
+                                // Credit the user's wallet and sync primary package stats if it's a PKG-P-
+                                const memberUpdate = { $inc: { wallet_balance: dailyPayoutAmount } };
+                                if (addon.package_id.startsWith('PKG-P-')) {
+                                    memberUpdate.$set = {
+                                        roi_payout_count: nextCount,
+                                        roi_last_payout_date: processingDateStr
+                                    };
+                                    if (nextCount >= 300) {
+                                        memberUpdate.$set.roi_status = "Completed";
+                                    }
+                                }
+
                                 await MemberModel.updateOne(
                                     { Member_id: addon.member_id },
-                                    { $inc: { wallet_balance: dailyPayoutAmount } },
+                                    memberUpdate,
                                     { session }
                                 );
 

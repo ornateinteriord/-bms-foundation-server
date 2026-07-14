@@ -168,6 +168,7 @@ const activateMemberPackage = async (req, res) => {
         package_value: amount,
         upgrade_status: "Active", // Activated with package
         Date_of_joining: activationDate,
+        roi_status: "Active", // ✅ UI uses this to show ROI is active
       },
       { new: true }
     );
