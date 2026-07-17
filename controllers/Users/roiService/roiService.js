@@ -87,13 +87,13 @@ const processDailyROI = async (targetMemberId = null) => {
         let totalPayoutsProcessed = 0;
         let membersUpdatedCount = 0;
 
+        // ✅ OPTIMIZATION: Fetch all member IDs who have a primary add-on (PKG-P-) to avoid N+1 queries
+        const addonPackages = await require("../../../models/Packages/AddOnPackage").find({ package_id: { $regex: /^PKG-P-/ } }, 'member_id').lean();
+        const primaryAddonMemberIds = new Set(addonPackages.map(a => a.member_id));
+
         for (const member of activeMembers) {
             // Check if primary package is managed as an Add-on (new system)
-            const hasPrimaryAddon = await require("../../../models/Packages/AddOnPackage").exists({ 
-                member_id: member.Member_id, 
-                package_id: { $regex: /^PKG-P-/ } 
-            });
-            if (hasPrimaryAddon) {
+            if (primaryAddonMemberIds.has(member.Member_id)) {
                 continue; // Phase 2 will handle their primary package and sync stats
             }
 
@@ -244,8 +244,14 @@ const processDailyROI = async (targetMemberId = null) => {
         let addonPayoutsProcessed = 0;
         let addonsUpdatedCount = 0;
 
+        // ✅ OPTIMIZATION: Map active members in memory to avoid N+1 queries
+        const activeMembersMap = new Map(activeMembers.map(m => [m.Member_id, m]));
+
         for (const addon of activeAddOns) {
-            const member = await MemberModel.findOne({ Member_id: addon.member_id });
+            let member = activeMembersMap.get(addon.member_id);
+            if (!member) {
+                member = await MemberModel.findOne({ Member_id: addon.member_id });
+            }
             if (!member || member.status !== "active") continue; // Skip if parent member isn't active
 
             const session = await mongoose.startSession();
