@@ -163,6 +163,16 @@ const getWalletWithdraw = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid withdrawal amount" });
     }
 
+    // Monthly Withdrawal Date Check (1st to 5th)
+    const currentDate = new Date();
+    const currentDay = currentDate.getDate();
+    if (currentDay < 1 || currentDay > 5) {
+      return res.status(400).json({
+        success: false,
+        message: "Withdrawals are only allowed between the 1st and 5th of each month."
+      });
+    }
+
     const member = await MemberModel.findOne({ Member_id: memberId });
     if (!member) return res.status(404).json({ success: false, message: "Member not found" });
 
@@ -519,6 +529,16 @@ const agentCommissionWithdraw = async (req, res) => {
     const withdrawalAmount = parseFloat(amount);
     if (isNaN(withdrawalAmount) || withdrawalAmount <= 0) {
       return res.status(400).json({ success: false, message: "Invalid withdrawal amount" });
+    }
+
+    // Monthly Withdrawal Date Check (1st to 5th)
+    const currentDate = new Date();
+    const currentDay = currentDate.getDate();
+    if (currentDay < 1 || currentDay > 5) {
+      return res.status(400).json({
+        success: false,
+        message: "Withdrawals are only allowed between the 1st and 5th of each month."
+      });
     }
 
     let user = await MemberModel.findOne({ Member_id: memberId });

@@ -90,11 +90,11 @@ const getMemberAddOns = async (req, res) => {
             const elapsedDays = now.diff(start, 'days');
             
             if (totalDays > 0) {
-                // Map to 300 scale for frontend compatibility if needed, 
+                // Map to 100 scale for frontend compatibility if needed, 
                 // or we'll handle it in frontend
                 progressCount = Math.max(0, Math.min(elapsedDays, totalDays));
-                // If we want to use the frontend's /300 logic:
-                // progressCount = (elapsedDays / totalDays) * 300;
+                // If we want to use the frontend's /100 logic:
+                // progressCount = (elapsedDays / totalDays) * 100;
             }
         }
 
@@ -179,7 +179,7 @@ const evaluateRequest = async (req, res) => {
           ref_no: `ACT-${member.Member_id}-0`,
           amount: 0,
           count: 0,
-          days: 300,
+          days: 100,
           status: "Approved",
           description: "Package Activation"
         });
@@ -191,7 +191,7 @@ const evaluateRequest = async (req, res) => {
           member_id: member.Member_id,
           Name: member.Name,
           mobileno: member.mobileno,
-          description: `Package Activation – Daily ROI (Day 0/300)`,
+          description: `Package Activation – Daily ROI (Day 0/100)`,
           transaction_type: "ROI Payout",
           ew_credit: "0",
           ew_debit: "0",
@@ -232,7 +232,7 @@ const evaluateRequest = async (req, res) => {
           ref_no: `ACT-A-${newAddOn.package_id}-0`,
           amount: 0,
           count: 0,
-          days: 300,
+          days: 100,
           status: "Approved",
           description: "Add-On Activation"
         });
@@ -243,7 +243,7 @@ const evaluateRequest = async (req, res) => {
           member_id: request.member_id,
           Name: member.Name,
           mobileno: member.mobileno,
-          description: `Add-On Activation – Day 0/300 (₹${request.requested_amount} pkg)`,
+          description: `Add-On Activation – Day 0/100 (₹${request.requested_amount} pkg)`,
           transaction_type: "ROI Payout",
           ew_credit: "0",
           ew_debit: "0",

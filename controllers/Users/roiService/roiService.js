@@ -116,7 +116,7 @@ const processDailyROI = async (targetMemberId = null) => {
                 }
 
                 // Skip if already completed
-                if (member.roi_status === "Completed" || (member.roi_payout_count || 0) >= 300) {
+                if (member.roi_status === "Completed" || (member.roi_payout_count || 0) >= 100) {
                     if (member.roi_status !== "Completed") {
                         member.roi_status = "Completed";
                         await member.save({ session });
@@ -142,10 +142,10 @@ const processDailyROI = async (targetMemberId = null) => {
                         const totalTargetAmount = member.roi_payout_target;
 
                         if (totalTargetAmount > 0) {
-                            const dailyPayoutAmount = parseFloat((totalTargetAmount / 300).toFixed(2));
+                            const dailyPayoutAmount = parseFloat((totalTargetAmount / 100).toFixed(2));
                             const nextCount = originalTotalCount + memberPayoutsThisRun + 1;
 
-                            if (nextCount <= 300) {
+                            if (nextCount <= 100) {
                                 const payoutIdNum = Date.now() + Math.floor(Math.random() * 1000);
 
                                 // Create Payout Entry (Historical Date)
@@ -157,7 +157,7 @@ const processDailyROI = async (targetMemberId = null) => {
                                     ref_no: `ROI-${member.Member_id}-${nextCount}`,
                                     amount: dailyPayoutAmount,
                                     count: nextCount,
-                                    days: 300,
+                                    days: 100,
                                     status: "Approved",
                                     description: `Base ROI payout`
                                 });
@@ -169,7 +169,7 @@ const processDailyROI = async (targetMemberId = null) => {
                                     member_id: member.Member_id,
                                     Name: member.Name,
                                     mobileno: member.mobileno,
-                                    description: `Base Package – Daily ROI (Day ${nextCount}/300)`,
+                                    description: `Base Package – Daily ROI (Day ${nextCount}/100)`,
                                     transaction_type: "ROI Payout",
                                     ew_credit: dailyPayoutAmount.toString(),
                                     ew_debit: "0",
@@ -188,7 +188,7 @@ const processDailyROI = async (targetMemberId = null) => {
                                 member.wallet_balance = (member.wallet_balance || 0) + dailyPayoutAmount;
                                 member.roi_payout_count = nextCount;
 
-                                if (nextCount >= 300) {
+                                if (nextCount >= 100) {
                                     member.roi_status = "Completed";
                                 }
 
@@ -210,7 +210,7 @@ const processDailyROI = async (targetMemberId = null) => {
                     await session.commitTransaction();
                     if (memberPayoutsThisRun > 0) {
                         membersUpdatedCount++;
-                        console.log(`💰 [Base ROI] [Day ${member.roi_payout_count}/300] ₹${memberPayoutsThisRun} days to ${member.Member_id}.`);
+                        console.log(`💰 [Base ROI] [Day ${member.roi_payout_count}/100] ₹${memberPayoutsThisRun} days to ${member.Member_id}.`);
                     }
                 } else {
                     await session.abortTransaction();
@@ -259,7 +259,7 @@ const processDailyROI = async (targetMemberId = null) => {
 
             try {
                 // Skip if already completed
-                if (addon.roi_status === "Completed" || (addon.roi_payout_count || 0) >= 300) {
+                if (addon.roi_status === "Completed" || (addon.roi_payout_count || 0) >= 100) {
                     if (addon.roi_status !== "Completed") {
                         addon.roi_status = "Completed";
                         await addon.save({ session });
@@ -285,11 +285,11 @@ const processDailyROI = async (targetMemberId = null) => {
                         const totalTargetAmount = addon.roi_payout_target || 0;
 
                         if (totalTargetAmount > 0) {
-                            const dailyPayoutAmount = parseFloat((totalTargetAmount / 300).toFixed(2));
+                            const dailyPayoutAmount = parseFloat((totalTargetAmount / 100).toFixed(2));
                             lastAddonDailyAmt = dailyPayoutAmount;
                             const nextCount = originalTotalCount + addonPayoutsThisRun + 1;
 
-                            if (nextCount <= 300) {
+                            if (nextCount <= 100) {
                                 const payoutIdNum = Date.now() + Math.floor(Math.random() * 1000);
 
                                 // ✅ Label payout clearly with the specific add-on request ID
@@ -301,7 +301,7 @@ const processDailyROI = async (targetMemberId = null) => {
                                     ref_no: `ROI-A-${addon.package_id}-${nextCount}`,
                                     amount: dailyPayoutAmount,
                                     count: nextCount,
-                                    days: 300,
+                                    days: 100,
                                     status: "Approved",
                                     description: `Add-On – ₹${addon.amount} package`
                                 });
@@ -313,7 +313,7 @@ const processDailyROI = async (targetMemberId = null) => {
                                     member_id: addon.member_id,
                                     Name: member.Name,
                                     mobileno: member.mobileno,
-                                    description: `Add-On ROI – Day ${nextCount}/300 (₹${addon.amount} pkg)`,
+                                    description: `Add-On ROI – Day ${nextCount}/100 (₹${addon.amount} pkg)`,
                                     transaction_type: "ROI Payout",
                                     ew_credit: dailyPayoutAmount.toString(),
                                     ew_debit: "0",
@@ -335,7 +335,7 @@ const processDailyROI = async (targetMemberId = null) => {
                                         roi_payout_count: nextCount,
                                         roi_last_payout_date: processingDateStr
                                     };
-                                    if (nextCount >= 300) {
+                                    if (nextCount >= 100) {
                                         memberUpdate.$set.roi_status = "Completed";
                                     }
                                 }
@@ -348,7 +348,7 @@ const processDailyROI = async (targetMemberId = null) => {
 
                                 addon.roi_payout_count = nextCount;
 
-                                if (nextCount >= 300) {
+                                if (nextCount >= 100) {
                                     addon.roi_status = "Completed";
                                 }
 
@@ -369,7 +369,7 @@ const processDailyROI = async (targetMemberId = null) => {
                     await session.commitTransaction();
                     if (addonPayoutsThisRun > 0) {
                         addonsUpdatedCount++;
-                        console.log(`💰 [Add-On ${addon.package_id}] [Day ${addon.roi_payout_count}/300] ₹${lastAddonDailyAmt}/day to ${addon.member_id}.`);
+                        console.log(`💰 [Add-On ${addon.package_id}] [Day ${addon.roi_payout_count}/100] ₹${lastAddonDailyAmt}/day to ${addon.member_id}.`);
                     }
                 } else {
                     await session.abortTransaction();
@@ -423,27 +423,27 @@ const processMemberROI = async (member) => {
             return { success: false, message: "Already paid" };
         }
 
-        const dailyAmt = parseFloat(((member.roi_payout_target || (member.package_value * 2)) / 300).toFixed(2));
+        const dailyAmt = parseFloat(((member.roi_payout_target || (member.package_value * 2)) / 100).toFixed(2));
         const nextIdx = (member.roi_payout_count || 0) + 1;
 
         const pId = Date.now() + Math.floor(Math.random() * 1000);
         const payout = new PayoutModel({
             payout_id: pId, date: new Date(), memberId: member.Member_id,
             payout_type: "ROI", ref_no: `ROI-${member.Member_id}-${nextIdx}`,
-            amount: dailyAmt, count: nextIdx, days: 300, status: "Approved"
+            amount: dailyAmt, count: nextIdx, days: 100, status: "Approved"
         });
 
         const transaction = new TransactionModel({
             transaction_id: `ROI-TX-${pId}`, transaction_date: todayStr,
             member_id: member.Member_id, Name: member.Name, mobileno: member.mobileno,
-            description: `Daily ROI Payout (Day ${nextIdx}/300)`, transaction_type: "ROI Payout",
+            description: `Daily ROI Payout (Day ${nextIdx}/100)`, transaction_type: "ROI Payout",
             ew_credit: dailyAmt.toString(), ew_debit: "0", status: "Completed", benefit_type: "ROI"
         });
 
         member.roi_payout_count = nextIdx;
         member.roi_last_payout_date = todayStr;
         member.wallet_balance = (member.wallet_balance || 0) + dailyAmt;
-        if (nextIdx >= 300) member.roi_status = "Completed";
+        if (nextIdx >= 100) member.roi_status = "Completed";
 
         await Promise.all([payout.save({ session }), transaction.save({ session }), member.save({ session })]);
         
@@ -487,10 +487,10 @@ const processAddOnROI = async (addon, member) => {
         }
 
         const totalTargetAmount = addon.roi_payout_target || (addon.amount * 2);
-        const dailyAmt = parseFloat((totalTargetAmount / 300).toFixed(2));
+        const dailyAmt = parseFloat((totalTargetAmount / 100).toFixed(2));
         const nextIdx = (addon.roi_payout_count || 0) + 1;
 
-        if (nextIdx > 300) {
+        if (nextIdx > 100) {
             await session.abortTransaction();
             session.endSession();
             return { success: false, message: "ROI Target Reached" };
@@ -507,7 +507,7 @@ const processAddOnROI = async (addon, member) => {
             ref_no: `ROI-A-${addon.package_id}-${nextIdx}`,
             amount: dailyAmt,
             count: nextIdx,
-            days: 300,
+            days: 100,
             status: "Approved",
             description: `Add-On – ₹${addon.amount} package`
         });
@@ -519,7 +519,7 @@ const processAddOnROI = async (addon, member) => {
             member_id: addon.member_id,
             Name: member.Name,
             mobileno: member.mobileno,
-            description: `Add-On Daily ROI (Day ${nextIdx}/300)`,
+            description: `Add-On Daily ROI (Day ${nextIdx}/100)`,
             transaction_type: "ROI Payout",
             ew_credit: dailyAmt.toString(),
             ew_debit: "0",
@@ -531,7 +531,7 @@ const processAddOnROI = async (addon, member) => {
         // Update Addon state
         addon.roi_payout_count = nextIdx;
         addon.roi_last_payout_date = todayStr;
-        if (nextIdx >= 300) addon.roi_status = "Completed";
+        if (nextIdx >= 100) addon.roi_status = "Completed";
 
         // Update Member wallet
         await MemberModel.updateOne(

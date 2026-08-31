@@ -13,7 +13,7 @@ const AddOnRequestSchema = new mongoose.Schema({
   // Explicitly tracked metrics for the separate ROI and Payout system once approved
   roi_status: { type: String, enum: ["Pending", "Active", "Completed"], default: "Pending" },
   roi_payout_count: { type: Number, default: 0 },
-  roi_payout_target: { type: Number, default: 300 }, // As requested 300 cal days
+  roi_payout_target: { type: Number, default: 100 }, // As requested 100 cal days
   roi_last_payout_date: { type: String },
   roi_start_date: { type: String },
 
