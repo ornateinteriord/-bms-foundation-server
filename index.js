@@ -250,6 +250,10 @@ app.use("/debug", DebugRoutes);
 // ======================================================
 //        🏠 HOME
 // ======================================================
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
 app.get("/", (req, res) => {
   res.send(`🚀 ${process.env.PROJECT_NAME || "MSCS Server"} Running Securely`);
 });
