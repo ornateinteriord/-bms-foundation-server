@@ -163,13 +163,13 @@ const getWalletWithdraw = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid withdrawal amount" });
     }
 
-    // Monthly Withdrawal Date Check (1st to 5th)
+    // Weekday Withdrawal Check (Monday to Friday)
     const currentDate = new Date();
-    const currentDay = currentDate.getDate();
-    if (currentDay < 1 || currentDay > 5) {
+    const currentDayOfWeek = currentDate.getDay(); // 0 = Sunday, 6 = Saturday
+    if (currentDayOfWeek === 0 || currentDayOfWeek === 6) {
       return res.status(400).json({
         success: false,
-        message: "Withdrawals are only allowed between the 1st and 5th of each month."
+        message: "Withdrawals are only allowed from Monday to Friday."
       });
     }
 
@@ -531,13 +531,13 @@ const agentCommissionWithdraw = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid withdrawal amount" });
     }
 
-    // Monthly Withdrawal Date Check (1st to 5th)
+    // Weekday Withdrawal Check (Monday to Friday)
     const currentDate = new Date();
-    const currentDay = currentDate.getDate();
-    if (currentDay < 1 || currentDay > 5) {
+    const currentDayOfWeek = currentDate.getDay(); // 0 = Sunday, 6 = Saturday
+    if (currentDayOfWeek === 0 || currentDayOfWeek === 6) {
       return res.status(400).json({
         success: false,
-        message: "Withdrawals are only allowed between the 1st and 5th of each month."
+        message: "Withdrawals are only allowed from Monday to Friday."
       });
     }
 

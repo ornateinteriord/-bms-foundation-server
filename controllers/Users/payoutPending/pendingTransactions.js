@@ -24,7 +24,7 @@ const getPendingTransactions = async (req, res) => {
       pendingTransactions.map(async (txn) => {
         const member = await MemberModel.findOne(
           { Member_id: txn.member_id },
-          { mobileno: 1, ifsc_code: 1, account_number: 1, _id: 0 }
+          { mobileno: 1, ifsc_code: 1, account_number: 1, Name: 1, _id: 0 }
         );
         return {
           ...txn.toObject(),
