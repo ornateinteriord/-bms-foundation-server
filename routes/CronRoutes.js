@@ -10,15 +10,17 @@ const router = express.Router();
  */
 router.get("/roi", async (req, res) => {
     // 1. Simple Secret Protection
-    // Vercel Cron sends a secret in the Authorization header: `Bearer ${CRON_SECRET}` 
-    // OR we can use a custom header. For simplicity, we'll check it from headers or query.
+    // Check it from Authorization header or URL query parameter (?secret=...)
     const authHeader = req.headers.authorization;
+    const querySecret = req.query.secret;
     const cronSecret = process.env.CRON_SECRET;
 
     // Log the incoming request for Vercel diagnostics
     console.log(`⏰ [CRON] [${new Date().toISOString()}] ROI Trigger received.`);
     
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    const isAuthorized = (authHeader === `Bearer ${cronSecret}`) || (querySecret === cronSecret);
+
+    if (cronSecret && !isAuthorized) {
         console.warn("⚠️ [CRON] Unauthorized ROI trigger attempt. Check Vercel CRON_SECRET environment variable.");
         return res.status(401).json({ success: false, message: "Unauthorized" });
     }
