@@ -21,6 +21,7 @@ const TransactionSchema = new mongoose.Schema(
     deduction: { type: String },
     net_amount: { type: String },
     withdrawal_amount: { type: String },
+    withdrawal_type: { type: String, default: "monthly" },
     benefit_type: { type: String, default: "direct" },
     previous_balance: { type: String },
 

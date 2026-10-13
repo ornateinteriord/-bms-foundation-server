@@ -153,7 +153,7 @@ const getWalletOverview = async (req, res) => {
 
 const getWalletWithdraw = async (req, res) => {
   try {
-    const { memberId, amount } = req.body;
+    const { memberId, amount, withdrawalType = "monthly" } = req.body;
 
     if (!memberId) return res.status(400).json({ success: false, message: "Member ID is required" });
     if (!amount) return res.status(400).json({ success: false, message: "Withdrawal amount is required" });
@@ -163,14 +163,69 @@ const getWalletWithdraw = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid withdrawal amount" });
     }
 
-    // Weekday Withdrawal Check (Monday to Friday)
     const currentDate = new Date();
     const currentDayOfWeek = currentDate.getDay(); // 0 = Sunday, 6 = Saturday
-    if (currentDayOfWeek === 0 || currentDayOfWeek === 6) {
-      return res.status(400).json({
-        success: false,
-        message: "Withdrawals are only allowed from Monday to Friday."
+    const currentDayOfMonth = currentDate.getDate();
+
+    // Withdrawal timing validations based on chosen mode:
+    if (withdrawalType === "monthly") {
+      // Monthly Rule: Only 1st to 5th of each month, once per month
+      if (currentDayOfMonth < 1 || currentDayOfMonth > 5) {
+        return res.status(400).json({
+          success: false,
+          message: "Monthly withdrawals are only allowed between the 1st and 5th of each month."
+        });
+      }
+
+      const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1, 0, 0, 0, 0);
+      const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      const existingMonthlyWithdrawal = await TransactionModel.findOne({
+        member_id: memberId,
+        transaction_type: "Withdrawal",
+        status: { $in: ["Pending", "Approved", "Paid", "Completed"] },
+        $or: [
+          { createdAt: { $gte: startOfMonth, $lte: endOfMonth } },
+          { transaction_date: { $gte: startOfMonth, $lte: endOfMonth } }
+        ]
       });
+
+      if (existingMonthlyWithdrawal) {
+        return res.status(400).json({
+          success: false,
+          message: "You have already made a monthly withdrawal for this month. Only one withdrawal per month is allowed."
+        });
+      }
+    } else {
+      // Monday to Friday Rule: Only weekdays, once per day
+      if (currentDayOfWeek === 0 || currentDayOfWeek === 6) {
+        return res.status(400).json({
+          success: false,
+          message: "Withdrawals are only allowed from Monday to Friday."
+        });
+      }
+
+      const startOfDay = new Date(currentDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(currentDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const existingDailyWithdrawal = await TransactionModel.findOne({
+        member_id: memberId,
+        transaction_type: "Withdrawal",
+        status: { $in: ["Pending", "Approved", "Paid", "Completed"] },
+        $or: [
+          { createdAt: { $gte: startOfDay, $lte: endOfDay } },
+          { transaction_date: { $gte: startOfDay, $lte: endOfDay } }
+        ]
+      });
+
+      if (existingDailyWithdrawal) {
+        return res.status(400).json({
+          success: false,
+          message: "You have already made a withdrawal today. One withdrawal per day is allowed."
+        });
+      }
     }
 
     const member = await MemberModel.findOne({ Member_id: memberId });
@@ -370,7 +425,7 @@ const getWalletWithdraw = async (req, res) => {
       transaction_id: newTransactionId.toString(),
       transaction_date: new Date(),
       member_id: memberId,
-      description: "Withdrawal Request",
+      description: withdrawalType === "monthly" ? "Monthly Withdrawal Request" : "Withdrawal Request",
       transaction_type: "Withdrawal",
       ew_credit: 0,
       ew_debit: withdrawalAmount,
@@ -378,6 +433,7 @@ const getWalletWithdraw = async (req, res) => {
       deduction: deduction,
       net_amount: netAmount,
       gross_amount: withdrawalAmount,
+      withdrawal_type: withdrawalType,
       benefits_source: {
         level_benefits_used: levelBenefits,
         direct_benefits_used: directBenefits,
