@@ -408,7 +408,9 @@ const getWalletWithdraw = async (req, res) => {
       });
     }
 
-    const deduction = withdrawalAmount * 0.05;
+    // Deductions: 0% for monthly withdrawal, 5% for monday to friday withdrawal
+    const deductionRate = withdrawalType === "monthly" ? 0 : 0.05;
+    const deduction = withdrawalAmount * deductionRate;
     const netAmount = withdrawalAmount - deduction;
 
     const lastTransaction = await TransactionModel.findOne({})
@@ -463,7 +465,7 @@ const getWalletWithdraw = async (req, res) => {
           grossAmount: withdrawalAmount.toFixed(2),
           deduction: deduction.toFixed(2),
           netAmount: netAmount.toFixed(2),
-          deductionRate: "5%"
+          deductionRate: withdrawalType === "monthly" ? "0%" : "5%"
         },
         balanceDetails: {
           previousBalance: availableBalance.toFixed(2),
