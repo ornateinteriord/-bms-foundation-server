@@ -500,6 +500,12 @@ const distributeROICommission = async (memberId, roiAmount, session = null, cust
       const payoutId = Date.now() + Math.floor(Math.random() * 1000) + upline.level + Math.floor(Math.random() * 1000);
       const today = customDate || new Date().toISOString().split('T')[0];
 
+      const uplineRefNo = `ROI-L-${upline.level}-${sourceRefNo || (memberId + '-' + today)}`;
+      const existingUplinePayout = await PayoutModel.findOne({ ref_no: uplineRefNo }).session(session);
+      if (existingUplinePayout) {
+        continue;
+      }
+
       // Create payout record
       const payout = new PayoutModel({
         payout_id: payoutId.toString(),
@@ -507,7 +513,7 @@ const distributeROICommission = async (memberId, roiAmount, session = null, cust
         memberId: upline.sponsor_id,
         payout_type: "ROI Level Benefit",
         // ✅ FIXED: ref_no must be unique per payout and level to avoid DB collision between Base and Add-on ROIs
-        ref_no: `ROI-L-${upline.level}-${sourceRefNo || (memberId + '-' + today)}`,
+        ref_no: uplineRefNo,
         amount: commissionAmount,
         level: upline.level,
         sponsored_member_id: memberId,

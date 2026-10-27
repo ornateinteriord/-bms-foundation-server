@@ -146,6 +146,13 @@ const processDailyROI = async (targetMemberId = null) => {
                             const nextCount = originalTotalCount + memberPayoutsThisRun + 1;
 
                             if (nextCount <= 300) {
+                                const targetRefNo = `ROI-${member.Member_id}-${nextCount}`;
+                                const existingPayout = await PayoutModel.findOne({ ref_no: targetRefNo }).session(session);
+                                if (existingPayout) {
+                                    console.log(`⚠️ [Base ROI] Payout already exists with ref_no ${targetRefNo}. Skipping duplicate.`);
+                                    continue;
+                                }
+
                                 const payoutIdNum = Date.now() + Math.floor(Math.random() * 1000);
 
                                 // Create Payout Entry (Historical Date)
@@ -154,7 +161,7 @@ const processDailyROI = async (targetMemberId = null) => {
                                     date: currentDayPtr.toDate(),
                                     memberId: member.Member_id,
                                     payout_type: "ROI",
-                                    ref_no: `ROI-${member.Member_id}-${nextCount}`,
+                                    ref_no: targetRefNo,
                                     amount: dailyPayoutAmount,
                                     count: nextCount,
                                     days: 300,
@@ -290,6 +297,13 @@ const processDailyROI = async (targetMemberId = null) => {
                             const nextCount = originalTotalCount + addonPayoutsThisRun + 1;
 
                             if (nextCount <= 300) {
+                                const targetRefNo = `ROI-A-${addon.package_id}-${nextCount}`;
+                                const existingPayout = await PayoutModel.findOne({ ref_no: targetRefNo }).session(session);
+                                if (existingPayout) {
+                                    console.log(`⚠️ [Add-On ROI] Payout already exists with ref_no ${targetRefNo}. Skipping duplicate.`);
+                                    continue;
+                                }
+
                                 const payoutIdNum = Date.now() + Math.floor(Math.random() * 1000);
 
                                 // ✅ Label payout clearly with the specific add-on request ID
@@ -298,7 +312,7 @@ const processDailyROI = async (targetMemberId = null) => {
                                     date: currentDayPtr.toDate(),
                                     memberId: addon.member_id,
                                     payout_type: "ROI (Add-On)",
-                                    ref_no: `ROI-A-${addon.package_id}-${nextCount}`,
+                                    ref_no: targetRefNo,
                                     amount: dailyPayoutAmount,
                                     count: nextCount,
                                     days: 300,
@@ -425,11 +439,18 @@ const processMemberROI = async (member) => {
 
         const dailyAmt = parseFloat(((member.roi_payout_target || (member.package_value * 2)) / 300).toFixed(2));
         const nextIdx = (member.roi_payout_count || 0) + 1;
+        const targetRefNo = `ROI-${member.Member_id}-${nextIdx}`;
+        const existingPayout = await PayoutModel.findOne({ ref_no: targetRefNo }).session(session);
+        if (existingPayout) {
+            await session.abortTransaction();
+            session.endSession();
+            return { success: false, message: "Payout already exists" };
+        }
 
         const pId = Date.now() + Math.floor(Math.random() * 1000);
         const payout = new PayoutModel({
             payout_id: pId, date: new Date(), memberId: member.Member_id,
-            payout_type: "ROI", ref_no: `ROI-${member.Member_id}-${nextIdx}`,
+            payout_type: "ROI", ref_no: targetRefNo,
             amount: dailyAmt, count: nextIdx, days: 300, status: "Approved"
         });
 
@@ -496,6 +517,14 @@ const processAddOnROI = async (addon, member) => {
             return { success: false, message: "ROI Target Reached" };
         }
 
+        const targetRefNo = `ROI-A-${addon.package_id}-${nextIdx}`;
+        const existingPayout = await PayoutModel.findOne({ ref_no: targetRefNo }).session(session);
+        if (existingPayout) {
+            await session.abortTransaction();
+            session.endSession();
+            return { success: false, message: "Payout already exists" };
+        }
+
         const pId = Date.now() + Math.floor(Math.random() * 1000);
         
         // Create Payout Entry
@@ -504,7 +533,7 @@ const processAddOnROI = async (addon, member) => {
             date: new Date(),
             memberId: addon.member_id,
             payout_type: "ROI (Add-On)",
-            ref_no: `ROI-A-${addon.package_id}-${nextIdx}`,
+            ref_no: targetRefNo,
             amount: dailyAmt,
             count: nextIdx,
             days: 300,
