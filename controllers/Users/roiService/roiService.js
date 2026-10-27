@@ -150,6 +150,8 @@ const processDailyROI = async (targetMemberId = null) => {
                                 const existingPayout = await PayoutModel.findOne({ ref_no: targetRefNo }).session(session);
                                 if (existingPayout) {
                                     console.log(`⚠️ [Base ROI] Payout already exists with ref_no ${targetRefNo}. Skipping duplicate.`);
+                                    member.roi_last_payout_date = processingDateStr;
+                                    currentDayPtr.add(1, "days");
                                     continue;
                                 }
 
@@ -301,6 +303,8 @@ const processDailyROI = async (targetMemberId = null) => {
                                 const existingPayout = await PayoutModel.findOne({ ref_no: targetRefNo }).session(session);
                                 if (existingPayout) {
                                     console.log(`⚠️ [Add-On ROI] Payout already exists with ref_no ${targetRefNo}. Skipping duplicate.`);
+                                    addon.roi_last_payout_date = processingDateStr;
+                                    currentDayPtr.add(1, "days");
                                     continue;
                                 }
 
