@@ -424,7 +424,7 @@ const getWalletWithdraw = async (req, res) => {
     }
 
     const newTransaction = new TransactionModel({
-      transaction_id: newTransactionId.toString(),
+      transaction_id: `WT-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
       transaction_date: new Date(),
       member_id: memberId,
       description: withdrawalType === "monthly" ? "Monthly Withdrawal Request" : "Withdrawal Request",
@@ -624,7 +624,7 @@ const agentCommissionWithdraw = async (req, res) => {
     }
 
     const newTransaction = new TransactionModel({
-      transaction_id: newTransactionId.toString(),
+      transaction_id: `WT-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
       transaction_date: new Date(),
       member_id: memberId,
       description: "Commission Withdrawal",
