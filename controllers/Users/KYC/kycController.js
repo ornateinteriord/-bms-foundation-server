@@ -161,14 +161,28 @@ exports.approveKYC = async (req, res) => {
   }
 };
 
-// Get KYC submissions (default: PENDING)
-// Get KYC submissions (only PROCESSING)
+// Get KYC submissions (by status: PROCESSING, APPROVED, REJECTED, ALL)
 exports.getKycSubmissions = async (req, res) => {
   try {
-    const { q, page = 1, limit = 50 } = req.query;
+    const { q, page = 1, limit = 50, status } = req.query;
 
-    // Always fetch only PROCESSING KYCs
-    const filter = { kycStatus: "PROCESSING" };
+    const filter = {};
+    if (status) {
+      const upperStatus = status.toString().trim().toUpperCase();
+      if (upperStatus === "APPROVED") {
+        filter.kycStatus = "APPROVED";
+      } else if (upperStatus === "REJECTED") {
+        filter.kycStatus = "REJECTED";
+      } else if (upperStatus === "ALL") {
+        // no kycStatus filter
+      } else {
+        // PENDING or PROCESSING
+        filter.kycStatus = "PROCESSING";
+      }
+    } else {
+      // Default: fetch only PROCESSING KYCs
+      filter.kycStatus = "PROCESSING";
+    }
 
     // 🔍 Search filter
     if (q) {
