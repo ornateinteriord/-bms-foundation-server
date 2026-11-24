@@ -1,6 +1,8 @@
 const MemberModel = require("../../../models/Users/Member");
 const PayoutModel = require("../../../models/Payout/Payout");
 const TransactionModel = require("../../../models/Transaction/Transaction");
+const AddOnPackageModel = require("../../../models/Packages/AddOnPackage");
+const moment = require("moment");
 
 /**
  * Commission Rates for MLM System
@@ -74,7 +76,9 @@ const findUplineSponsors = async (memberId, maxLevels = 15) => {
       sponsor_name: sponsor.Name,
       sponsor_mobileno: sponsor.mobileno,
       sponsored_member_id: currentMemberId, // The member who triggered this commission
-      sponsor_status: sponsor.status
+      sponsor_status: sponsor.status,
+      level_eligible: sponsor.level_eligible,
+      direct_referrals: sponsor.direct_referrals || []
     });
 
     // Move up the chain
@@ -134,6 +138,23 @@ const calculateCommissions = async (newMemberId, directSponsorId, specificAmount
     for (const upline of uplineSponsors) {
       // Only active sponsors are eligible for commissions
       if (upline.sponsor_status !== 'active') {
+        continue;
+      }
+
+      // --- 2. Levels 2 to 10: PRODUCT LEVEL INCOME ---
+      // User Rule (Active):
+      // * Level 1 (Direct Referral): No level check required. Direct sponsor always gets Level 1 income.
+      // * Levels 2 to 10: Sponsor must have level >= downline level (upline.level) to get income:
+      //   - Level 2 income requires Level >= 2
+      //   - Level 5 income requires Level >= 5
+      //   - Level 8 income requires Level >= 8
+      //   - (For any Level N from 2 to 10, sponsor level must be >= N. Otherwise, skip commission).
+      const currentLevelEligible = parseInt(upline.level_eligible || 0, 10) || 0;
+      const referralsCount = upline.direct_referrals?.length || 0;
+      const sponsorLevel = Math.min(Math.max(currentLevelEligible, referralsCount), 20);
+
+      if (upline.level >= 2 && upline.level <= 10 && sponsorLevel < upline.level) {
+        console.log(`⚠️ Sponsor ${upline.sponsor_id} skipped for Level ${upline.level} benefit: sponsor level (${sponsorLevel}) < required level (${upline.level})`);
         continue;
       }
 
@@ -200,6 +221,7 @@ const processCommissions = async (commissions, session = null) => {
 
         // Generate unique payout ID
         const payoutId = Date.now() + Math.floor(Math.random() * 1000) + commission.level + Math.floor(Math.random() * 1000);
+        const commissionRefNo = `PKG-L-${commission.level}-${commission.sponsor_id}-${commission.new_member_id}-${payoutId}`;
 
         // Create payout record
         const payout = new PayoutModel({
@@ -207,7 +229,7 @@ const processCommissions = async (commissions, session = null) => {
           date: new Date().toISOString().split('T')[0],
           memberId: commission.sponsor_id,
           payout_type: commission.payout_type,
-          ref_no: commission.new_member_id,
+          ref_no: commissionRefNo,
           amount: commission.amount,
           level: commission.level,
           sponsored_member_id: commission.new_member_id,
@@ -314,15 +336,21 @@ const updateSponsorReferrals = async (sponsorId, newMemberId) => {
       directReferrals.push(newMemberId);
     }
 
+    // Auto-increment sponsor level based on direct referrals (1 referral = level 1, 2 = level 2, etc. up to 20)
+    const calculatedLevel = Math.min(directReferrals.length, 20);
+    const currentEligibleLevel = parseInt(sponsor.level_eligible || 0, 10) || 0;
+    const finalLevel = Math.min(Math.max(calculatedLevel, currentEligibleLevel), 20);
+
     await MemberModel.findOneAndUpdate(
       { Member_id: sponsorId },
       {
         direct_referrals: directReferrals,
+        level_eligible: finalLevel.toString(),
         $inc: { total_team: 1 }
       }
     );
 
-    console.log(`✅ Updated referrals for ${sponsorId}: Added ${newMemberId}`);
+    console.log(`✅ Updated referrals for ${sponsorId}: Added ${newMemberId}. Direct referrals count: ${directReferrals.length}, level_eligible updated to: ${finalLevel}`);
 
   } catch (error) {
     console.error("❌ Error updating referrals:", error);
@@ -476,6 +504,33 @@ const distributeROICommission = async (memberId, roiAmount, session = null, cust
     const uplineSponsors = await findUplineSponsors(memberId, 10);
     if (uplineSponsors.length === 0) return [];
 
+    // Option B: Grandfather old packages activated before CUTOFF_DATE (2026-11-24).
+    // Old running packages continue paying Level ROI without stopping (no skip).
+    // The new strict 1-to-1 matching rule only applies to packages activated on or after 2026-11-24.
+    const CUTOFF_DATE = "2026-11-24";
+    let isNewPackageOrUser = false;
+
+    let packageActivationDate = null;
+    if (sourceRefNo && sourceRefNo.startsWith("ROI-A-")) {
+      const parts = sourceRefNo.split("-");
+      // Format: ROI-A-<package_id>-<count>
+      const packageId = parts.slice(2, parts.length - 1).join("-");
+      if (packageId) {
+        const addonPkg = await AddOnPackageModel.findOne({ package_id: packageId }).session(session);
+        if (addonPkg) {
+          packageActivationDate = addonPkg.roi_start_date || (addonPkg.createdAt ? moment(addonPkg.createdAt).utcOffset("+05:30").format("YYYY-MM-DD") : null);
+        }
+      }
+    }
+
+    if (!packageActivationDate && sourceMember) {
+      packageActivationDate = sourceMember.Date_of_joining || (sourceMember.createdAt ? moment(sourceMember.createdAt).utcOffset("+05:30").format("YYYY-MM-DD") : null);
+    }
+
+    if (packageActivationDate && packageActivationDate >= CUTOFF_DATE) {
+      isNewPackageOrUser = true;
+    }
+
     const results = [];
 
     for (const upline of uplineSponsors) {
@@ -488,6 +543,33 @@ const distributeROICommission = async (memberId, roiAmount, session = null, cust
           error: "Sponsor not active"
         });
         continue;
+      }
+
+      // --- 2. Levels 2 to 10: PRODUCT LEVEL INCOME (ROI) ---
+      // Option B User Rule:
+      // * Old packages (activated before 2026-11-24): Protected! Level ROI continues without stopping (no skip).
+      // * New packages (activated on or after 2026-11-24): Strict 1-to-1 matching rule:
+      //   - Level 1 (Direct Referral): No level check required. Direct sponsor always gets Level 1 income.
+      //   - Levels 2 to 10: Sponsor must have level >= downline level (upline.level) to get income:
+      //     - Level 2 income requires Level >= 2
+      //     - Level 5 income requires Level >= 5
+      //     - Level 8 income requires Level >= 8
+      //     - (For any Level N from 2 to 10, sponsor level must be >= N. Otherwise, skip commission).
+      if (isNewPackageOrUser) {
+        const currentLevelEligible = parseInt(upline.level_eligible || 0, 10) || 0;
+        const referralsCount = upline.direct_referrals?.length || 0;
+        const sponsorLevel = Math.min(Math.max(currentLevelEligible, referralsCount), 20);
+
+        if (upline.level >= 2 && upline.level <= 10 && sponsorLevel < upline.level) {
+          console.log(`⚠️ Sponsor ${upline.sponsor_id} skipped for ROI Level ${upline.level} benefit from new member ${memberId}: sponsor level (${sponsorLevel}) < required level (${upline.level})`);
+          results.push({
+            level: upline.level,
+            sponsor_id: upline.sponsor_id,
+            success: false,
+            error: `Level (${sponsorLevel}) < ${upline.level} required for level ${upline.level}`
+          });
+          continue;
+        }
       }
 
       // Get percentage based on level from existing commissionPercentages
